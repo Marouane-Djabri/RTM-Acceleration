@@ -1,0 +1,20 @@
+# build + local python
+build/
+**/venv/
+__pycache__/
+*.pyc
+
+# generated data: the synthetic model is remade by run_synthetic.sh / setup.sh;
+# the fixed Marmousi shots (46 MB) travel by rsync, their checksum is tracked.
+data/synthetic/*.bin
+data/synthetic/*.hdr
+data/synthetic/*.png
+data/real/marmousi_shots.bin
+data/real/marmousi_pilot_shots.bin
+data/real/*.png
+
+# per-run outputs; the reference image, CSVs and plots ARE tracked
+results/images/
+results/*.bin
+results/*.txt
+!results/ref/
