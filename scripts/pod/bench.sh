@@ -42,7 +42,12 @@ if [ "$max_shots" != 0 ]; then
 fi
 mkdir -p results/images
 
-echo "=== bench $engine on $dataset (gpus=$gpus) ==="
+# Pin OpenMP threads to cores so cpu-opt timings are repeatable run to run.
+# Override with OMP_NUM_THREADS=N to measure thread scaling.
+export OMP_PROC_BIND="${OMP_PROC_BIND:-close}"
+export OMP_PLACES="${OMP_PLACES:-cores}"
+
+echo "=== bench $engine on $dataset (gpus=$gpus, OMP threads=${OMP_NUM_THREADS:-all}) ==="
 ./build/rtm --engine "$engine" --velocity "$MARMOUSI_VEL" --shots "$MARMOUSI_SHOTS" \
     --output "$image" \
     --order "$ORDER" --nb "$NB" --f0 "$F0" --store-interval "$STORE_INTERVAL" \

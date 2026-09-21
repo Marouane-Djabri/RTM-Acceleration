@@ -65,7 +65,9 @@ add_library(rtm_core STATIC
 target_include_directories(rtm_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Optimized CPU engine (Phase 1): its sources alone get -O3 -march=native so
-# the reference objects keep their reproducible -O2.
+# the reference objects keep their reproducible -O2. -ffp-contract=off keeps
+# a*b+c from becoming an FMA, so cpu-opt stays bit-identical to the reference
+# (see src/cpu_opt/cpu_opt.hpp).
 file(GLOB RTM_CPU_OPT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/cpu_opt/*.cpp)
 if(RTM_CPU_OPT_SOURCES)
   target_sources(rtm_core PRIVATE ${RTM_CPU_OPT_SOURCES})
@@ -73,7 +75,7 @@ if(RTM_CPU_OPT_SOURCES)
   target_compile_definitions(rtm_core PUBLIC RTM_WITH_CPU_OPT)
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set_source_files_properties(${RTM_CPU_OPT_SOURCES} PROPERTIES
-      COMPILE_OPTIONS "-O3;-march=native;-fopt-info-vec-optimized")
+      COMPILE_OPTIONS "-O3;-march=native;-ffp-contract=off")
   endif()
 endif()
 if(OpenMP_CXX_FOUND)
