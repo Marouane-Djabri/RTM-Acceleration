@@ -11,6 +11,17 @@
 
 namespace rtm {
 
+const char* CUDARTM::name() const {
+    switch (variant_) {
+        case CudaVariant::V0_Naive:    return "cuda-v0 (naive mirror)";
+        case CudaVariant::V1_Fused:    return "cuda-v1 (sponge fused into stencil)";
+        case CudaVariant::V2_Imaging:  return "cuda-v2 (imaging fused into backward stencil)";
+        case CudaVariant::V3_Shared:   return "cuda-v3 (shared-memory stencil tile)";
+        case CudaVariant::V4_RegQueue: return "cuda-v4 (warp-shuffle z-neighbours)";
+    }
+    return "cuda";
+}
+
 // -----------------------------------------------------------------------------
 // setup() reproduces CPUReferenceRTM::setup's four host tables VERBATIM
 // (same formulas, same float arithmetic — do not "improve" them; see
@@ -97,6 +108,11 @@ void CUDARTM::setup(const VelocityModel& model, const RTMParams& par,
                           cudaMemcpyHostToDevice));
 
     upload_stencil_constants(c0, cx, cz, g_.half, nxe, nze, nb);
+
+    // cuda-v2+ only: per-point receiver marker, fixed size for the run's
+    // lifetime (unlike d_rec_index_/d_traces_, which grow with nrec).
+    if (uses_receiver_marker())
+        CUDA_CHECK(cudaMalloc(&d_is_receiver_, g_.n_extended() * sizeof(unsigned char)));
 }
 
 std::string CUDARTM::device_name() const {
@@ -117,6 +133,8 @@ CUDARTM::~CUDARTM() {
     cudaFree(d_image_);
     cudaFree(d_illum_);
     cudaFree(d_rec_index_);
+    cudaFree(d_is_receiver_);
+    cudaFree(d_unique_rec_ext_);
 }
 
 // Same clamp logic as CPUReferenceRTM::map_geometry, then upload rec_index_
@@ -147,11 +165,37 @@ void CUDARTM::map_geometry(const ShotRecord& shot) {
         d_traces_    = nullptr;
         CUDA_CHECK(cudaMalloc(&d_rec_index_, (std::size_t)nrec * sizeof(int)));
         CUDA_CHECK(cudaMalloc(&d_traces_,    (std::size_t)nrec * shot.nt * sizeof(float)));
+        if (uses_receiver_marker()) {
+            CUDA_CHECK(cudaFree(d_unique_rec_ext_));
+            d_unique_rec_ext_ = nullptr;
+            CUDA_CHECK(cudaMalloc(&d_unique_rec_ext_, (std::size_t)nrec * sizeof(int)));
+        }
         nrec_cap_ = nrec;
     }
     if (nrec > 0)
         CUDA_CHECK(cudaMemcpy(d_rec_index_, rec_index.data(), (std::size_t)nrec * sizeof(int),
                               cudaMemcpyHostToDevice));
+
+    // cuda-v2+ only: rebuild the per-point receiver marker and the
+    // deduplicated receiver list for this shot's geometry (docs/CUDA_PLAN.md
+    // §6 rung V2 — see kernels_v2_imaging.cu for why both are needed).
+    if (uses_receiver_marker()) {
+        CUDA_CHECK(cudaMemsetAsync(d_is_receiver_, 0, g_.n_extended() * sizeof(unsigned char)));
+
+        std::vector<int> unique_ext = rec_index;
+        std::sort(unique_ext.begin(), unique_ext.end());
+        unique_ext.erase(std::unique(unique_ext.begin(), unique_ext.end()), unique_ext.end());
+        nuniq_rec_ = (int)unique_ext.size();
+        if (nuniq_rec_ > 0)
+            CUDA_CHECK(cudaMemcpy(d_unique_rec_ext_, unique_ext.data(),
+                                  (std::size_t)nuniq_rec_ * sizeof(int), cudaMemcpyHostToDevice));
+
+        if (nrec > 0) {
+            const int blocks = (nrec + 127) / 128;
+            k_mark_receivers<<<blocks, 128>>>(d_is_receiver_, d_rec_index_, nrec);
+            CUDA_CHECK_KERNEL();
+        }
+    }
 
     if (nclamped > 0 && par_.verbose) {
         std::fprintf(stderr,

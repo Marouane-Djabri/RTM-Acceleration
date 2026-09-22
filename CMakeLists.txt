@@ -86,7 +86,11 @@ if(RTM_CUDA_ENABLED)
   target_sources(rtm_core PRIVATE
     src/cuda/rtm_cuda.cu
     src/cuda/propagation_cuda.cu
-    src/cuda/imaging_cuda.cu)
+    src/cuda/imaging_cuda.cu
+    src/cuda/kernels_v1_fused.cu
+    src/cuda/kernels_v2_imaging.cu
+    src/cuda/kernels_v3_shared.cu
+    src/cuda/kernels_v4_regqueue.cu)
   target_compile_definitions(rtm_core PUBLIC RTM_WITH_CUDA)
   set_target_properties(rtm_core PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
   target_compile_options(rtm_core PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)

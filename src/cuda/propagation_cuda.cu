@@ -99,6 +99,57 @@ constexpr int kSpongeThreads = 256;
 constexpr int kRecThreads    = 128;
 
 inline int ceil_div(int a, int b) { return (a + b - 1) / b; }
+
+// Picks the plain (non-imaging) fused stencil+sponge kernel for this rung —
+// used by the forward driver always, and by the backward driver on every
+// non-stored step (or for V0, every step). V2 reuses V1's kernel here since
+// V2 only changes what happens on stored backward steps.
+void launch_plain_stencil(CudaVariant variant, dim3 grid, dim3 block,
+                          float* p_prev, float* p_cur, float* p_next,
+                          const float* vdt2, const float* sponge) {
+    switch (variant) {
+        case CudaVariant::V4_RegQueue:
+            k_fd_time_step_v4<<<grid, block>>>(p_prev, p_cur, p_next, vdt2, sponge);
+            break;
+        case CudaVariant::V3_Shared:
+            k_fd_time_step_v3<<<grid, block>>>(p_prev, p_cur, p_next, vdt2, sponge);
+            break;
+        case CudaVariant::V0_Naive:
+            k_fd_time_step<<<grid, block>>>(p_prev, p_cur, p_next, vdt2);
+            break;
+        case CudaVariant::V1_Fused:
+        case CudaVariant::V2_Imaging:
+            k_fd_time_step_v1<<<grid, block>>>(p_prev, p_cur, p_next, vdt2, sponge);
+            break;
+    }
+}
+
+// Picks the imaging-fused stencil kernel for a stored backward step, for
+// whichever of V2/V3/V4 this engine is (see kernels_v2_imaging.cu for why
+// imaging can't simply be "the same thread also does image += f*b" and has
+// to skip receiver points here, finished by k_image_unique_receivers).
+void launch_imaging_stencil(CudaVariant variant, dim3 grid, dim3 block,
+                            float* p_prev, float* p_cur, float* p_next,
+                            const float* vdt2, const float* sponge,
+                            const float* fwd_snapshot, const unsigned char* is_receiver,
+                            float* image, float* illum, int nx, int nz) {
+    switch (variant) {
+        case CudaVariant::V4_RegQueue:
+            k_fd_time_step_v4_image<<<grid, block>>>(p_prev, p_cur, p_next, vdt2, sponge,
+                                                      fwd_snapshot, is_receiver, image, illum, nx, nz);
+            break;
+        case CudaVariant::V3_Shared:
+            k_fd_time_step_v3_image<<<grid, block>>>(p_prev, p_cur, p_next, vdt2, sponge,
+                                                      fwd_snapshot, is_receiver, image, illum, nx, nz);
+            break;
+        case CudaVariant::V0_Naive:
+        case CudaVariant::V1_Fused:
+        case CudaVariant::V2_Imaging:
+            k_fd_time_step_v2_image<<<grid, block>>>(p_prev, p_cur, p_next, vdt2, sponge,
+                                                      fwd_snapshot, is_receiver, image, illum, nx, nz);
+            break;
+    }
+}
 } // namespace
 
 // =============================================================================
@@ -138,12 +189,16 @@ void CUDARTM::forward_propagation(const ShotRecord& shot,
     }
 
     for (int it = 0; it < nt; ++it) {
-        k_fd_time_step<<<grid_stencil, block>>>(d_pp_, d_pc_, d_pn_, d_vdt2_);
+        // Forward never images, so the plain fused kernel is always right
+        // here, whichever rung this engine is.
+        launch_plain_stencil(variant_, grid_stencil, block, d_pp_, d_pc_, d_pn_, d_vdt2_, d_sponge_);
         CUDA_CHECK_KERNEL();
         k_inject_source<<<1, 1>>>(d_pn_, d_vdt2_, src_index_, d_wavelet_, it);
         CUDA_CHECK_KERNEL();
-        k_sponge<<<sponge_blocks, kSpongeThreads>>>(d_pc_, d_pn_, d_sponge_, n_ext);
-        CUDA_CHECK_KERNEL();
+        if (variant_ == CudaVariant::V0_Naive) {
+            k_sponge<<<sponge_blocks, kSpongeThreads>>>(d_pc_, d_pn_, d_sponge_, n_ext);
+            CUDA_CHECK_KERNEL();
+        }
 
         // rotate: pp <- pc, pc <- pn, pn <- (old pp, reused as scratch)
         std::swap(d_pp_, d_pc_);
@@ -214,24 +269,51 @@ void CUDARTM::backward_propagation(const ShotRecord& shot,
     const int rec_blocks    = ceil_div(nrec, kRecThreads);
 
     for (int it = nt - 1; it >= 0; --it) {
-        k_fd_time_step<<<grid_stencil, block>>>(d_pp_, d_pc_, d_pn_, d_vdt2_);
-        CUDA_CHECK_KERNEL();
+        const bool stored = (it % store) == 0;
+        const std::size_t slot = (std::size_t)(it / store) * g_.n_interior();
+        const bool fuses_imaging = uses_receiver_marker();   // V2, V3, V4
+
+        if (fuses_imaging && stored) {
+            // Stencil+sponge+imaging fused, skipping this step's receiver
+            // points (finished below, after injection) — kernels_v2_imaging.cu
+            // has the full bit-identity argument for why the split is needed.
+            launch_imaging_stencil(variant_, grid_stencil, block, d_pp_, d_pc_, d_pn_, d_vdt2_, d_sponge_,
+                                   d_snap_ + slot, d_is_receiver_, d_image_, d_illum_, g_.nx, g_.nz);
+            CUDA_CHECK_KERNEL();
+        } else {
+            launch_plain_stencil(variant_, grid_stencil, block, d_pp_, d_pc_, d_pn_, d_vdt2_, d_sponge_);
+            CUDA_CHECK_KERNEL();
+        }
         if (nrec > 0) {
             k_inject_receivers<<<rec_blocks, kRecThreads>>>(d_pn_, d_vdt2_, d_rec_index_, d_traces_,
                                                              shot.nt, it, nrec);
             CUDA_CHECK_KERNEL();
         }
-        k_sponge<<<sponge_blocks, kSpongeThreads>>>(d_pc_, d_pn_, d_sponge_, n_ext);
-        CUDA_CHECK_KERNEL();
+        if (variant_ == CudaVariant::V0_Naive) {
+            k_sponge<<<sponge_blocks, kSpongeThreads>>>(d_pc_, d_pn_, d_sponge_, n_ext);
+            CUDA_CHECK_KERNEL();
+        }
 
         std::swap(d_pp_, d_pc_);
         std::swap(d_pc_, d_pn_);
 
-        if ((it % store) == 0) {
-            const std::size_t slot = (std::size_t)(it / store) * g_.n_interior();
-            k_imaging<<<grid_image, block>>>(d_snap_ + slot, d_pc_, d_image_, d_illum_,
-                                             g_.nx, g_.nz, g_.nb, nze);
-            CUDA_CHECK_KERNEL();
+        if (stored) {
+            if (fuses_imaging) {
+                // Finish exactly the points the fused kernel skipped, now
+                // that injection has landed — one thread per unique
+                // receiver-touched interior point this shot.
+                if (nuniq_rec_ > 0) {
+                    const int blocks = (nuniq_rec_ + kRecThreads - 1) / kRecThreads;
+                    k_image_unique_receivers<<<blocks, kRecThreads>>>(
+                        d_snap_ + slot, d_pc_, d_unique_rec_ext_, nuniq_rec_,
+                        d_image_, d_illum_, g_.nz, g_.nb, nze);
+                    CUDA_CHECK_KERNEL();
+                }
+            } else {
+                k_imaging<<<grid_image, block>>>(d_snap_ + slot, d_pc_, d_image_, d_illum_,
+                                                 g_.nx, g_.nz, g_.nb, nze);
+                CUDA_CHECK_KERNEL();
+            }
         }
     }
     CUDA_CHECK(cudaDeviceSynchronize());

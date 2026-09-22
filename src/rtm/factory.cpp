@@ -9,8 +9,8 @@
 #include <stdexcept>
 
 // Engines added by later phases are registered here as they appear:
-//   cuda-v1..v4  Phase 2   CUDARTM variants
 //   cuda-multi   Phase 3   include "rtm_cuda_multi.hpp"
+// cuda-v0..v4 (Phase 2, the CUDA ladder) are all registered below.
 
 namespace rtm {
 
@@ -23,7 +23,15 @@ std::unique_ptr<RTMEngine> make_engine(const std::string& engine_name,
 #endif
 #ifdef RTM_WITH_CUDA
     if (engine_name == "cuda-v0" || engine_name == "cuda")
-        return std::make_unique<CUDARTM>();
+        return std::make_unique<CUDARTM>(CudaVariant::V0_Naive);
+    if (engine_name == "cuda-v1")
+        return std::make_unique<CUDARTM>(CudaVariant::V1_Fused);
+    if (engine_name == "cuda-v2")
+        return std::make_unique<CUDARTM>(CudaVariant::V2_Imaging);
+    if (engine_name == "cuda-v3")
+        return std::make_unique<CUDARTM>(CudaVariant::V3_Shared);
+    if (engine_name == "cuda-v4")
+        return std::make_unique<CUDARTM>(CudaVariant::V4_RegQueue);
 #endif
     throw std::runtime_error("unknown or unavailable engine: '" + engine_name +
                              "' (see --list-engines)");
@@ -37,6 +45,10 @@ std::vector<std::string> list_engines() {
 #endif
 #ifdef RTM_WITH_CUDA
     names.push_back("cuda-v0");
+    names.push_back("cuda-v1");
+    names.push_back("cuda-v2");
+    names.push_back("cuda-v3");
+    names.push_back("cuda-v4");
 #endif
     return names;
 }
