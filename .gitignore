@@ -1,6 +1,7 @@
 # build + local python
 build/
 **/venv/
+venv_devito/
 __pycache__/
 *.pyc
 

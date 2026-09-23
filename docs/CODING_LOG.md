@@ -6,6 +6,76 @@ machine — see `docs/CUDA_PLAN.md` §0), and what still needs a pod run.
 
 ---
 
+## 2026-09-22 — Devito industry-reference cross-check (not a ladder rung)
+
+**Context.** At the user's request: an independent, externally-written RTM
+implementation migrating the same fixed Marmousi dataset, to cross-check
+`CPUReferenceRTM` itself against something other than this repo's own code —
+every engine in the ladder is graded against `CPUReferenceRTM`, so a bug in
+the reference would currently pass silently everywhere. Chose
+[Devito](https://www.devitoproject.org/) (Imperial College London / SLIM's
+finite-difference DSL, used in a large fraction of published RTM/FWI papers)
+as the reference tool. Deliberately kept **out of** `docs/OPTIMIZATION_PLAN.md`'s
+ladder: it doesn't compile against this repo, doesn't write to
+`results/benchmarks.csv` / `results/compare.csv`, and its wall-clock time is
+not a fair bar next to a hand-tuned CUDA kernel (different codebase, no
+attempt made to make the comparison controlled).
+
+**New files.** `scripts/devito/marmousi_rtm_devito.py` (the RTM script,
+pure Python + Devito, no dependency on this repo's C++), `scripts/pod/setup_devito.sh`
+(installs Devito into `venv_devito/` and smoke-tests it), `docs/runbook/15_devito_reference.md`
+(the pod hand-off, same shape as the other runbooks).
+
+**What the script reproduces from `src/rtm/rtm_cpu.cpp`, read directly out of
+that file rather than guessed:** the extended grid (`nb` cells added on all
+four sides, velocity extended by edge replication), the Cerjan (1985) sponge
+— read the exact formula `w(i) = exp(-(alpha*(nb-d))^2)` and its default
+`alpha = 0.0053` out of `rtm_cpu.cpp` and `rtm_types.hpp` rather than using
+Devito's usual additive-damping-term convention, and applied it the same way
+`rtm_cpu.cpp` does: post-multiplying the wavefield every step rather than as
+a term inside the PDE — and the Ricker wavelet's exact delay,
+`t0 = 1.2/f0` (also read out of `rtm_cpu.cpp`; Devito tutorials commonly use
+`1.0/f0`, which would have silently shifted the source in time relative to
+this project's own engines). Also ported `mute_direct_wave`
+(`src/io/seismic_io.cpp`) into numpy so the same direct-arrival mute is
+applied before the receiver data is back-propagated.
+
+**Devito API notes for whoever touches this script next.** (1) A `save=nt`
+`TimeFunction`'s operator bounds must be left for Devito to infer
+(`op.apply(dt=dt)`, no explicit `time_m`/`time_M`) — passing them explicitly
+raises `InvalidArgument: OOB detected`, because the save-mode time axis has
+no wraparound and Devito's own bound inference already accounts for the
+second-time-derivative stencil's edge requirements. (2) Storing the full
+per-shot forward wavefield at `nt=2800` would be ~4.3 GB/shot; instead it's
+subsampled with a `ConditionalDimension` at `--store-interval` (mirrors the
+project's own `--store-interval` flag) down to ~625 MB/shot, and the
+zero-lag imaging condition is accumulated inline during the backward pass
+via `Inc(image, usave * v)` rather than by storing both wavefields fully —
+this is a standard Devito RTM pattern, not something invented for this repo.
+(3) Both operators (forward, adjoint) are built and JIT-compiled **once**,
+outside the shot loop, and reused for all 12 shots by mutating
+`SparseTimeFunction.coordinates.data` / `.data` between `.apply()` calls —
+this is the difference between one JIT compile and twelve.
+
+**Verified locally** (no GPU on this machine, but Devito's default backend is
+plain OpenMP C, so this needed no GPU): installed Devito 4.8.23 into a throwaway
+venv; ran the full forward+adjoint+imaging pipeline on tiny hand-built grids
+first (`/tmp` smoke scripts, not committed) to pin down the API before touching
+real files; then ran the actual `scripts/devito/marmousi_rtm_devito.py` end-to-end
+against this repo's own `data/synthetic/{velocity,shots}.bin` and compared the
+output with `./build/rtm --engine cpu` on the same files via `rtm_compare`:
+normalized correlation 0.913 on a single shot with an extreme `nb`-to-`nx`
+ratio (60 vs 81) — same dot-shaped image, same location, in both PNGs.
+`rtm_compare`'s strict default gate (`L2rel < 1e-5`) does **not** apply here
+and was expected to fail (`L2rel = 0.56`); it is not a bit-identical-build
+gate, it's a different code entirely — the runbook says so explicitly and
+gives a normalized-correlation-based reading instead.
+
+**Not yet verified (needs the pod):** the real 12-shot Marmousi run
+(`results/ref/marmousi_devito.bin` doesn't exist yet), and whether
+`normalized correlation` improves with the full multi-shot stack the way a
+single-shot edge case would predict.
+
 ## 2026-09-21 — `cuda-v3` and `cuda-v4`: shared-memory tiling and warp-shuffle z-neighbours (Phase 2, rungs G3-G4)
 
 **Context.** Finishes the CUDA ladder's core rungs (`cuda-v1`..`cuda-v4`,
