@@ -186,6 +186,7 @@ void CUDARTM::forward_propagation(const ShotRecord& shot,
         const std::size_t nbytes = (std::size_t)nrec * nt * sizeof(float);
         CUDA_CHECK(cudaMalloc(&d_rec_out, nbytes));
         CUDA_CHECK(cudaMemset(d_rec_out, 0, nbytes));
+        record_device_memory();
     }
 
     for (int it = 0; it < nt; ++it) {

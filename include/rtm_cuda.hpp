@@ -29,6 +29,7 @@ public:
     bool        is_gpu()      const override { return true; }
     int         num_devices() const override { return 1; }
     std::string device_name() const override;   // cudaDeviceProp::name of device 0
+    std::size_t peak_device_bytes() const override { return peak_device_bytes_; }
 
     void setup(const VelocityModel&, const RTMParams&, const TimeAxis&) override;
     void forward_propagation(const ShotRecord&, std::vector<float>* snapshots,
@@ -43,6 +44,11 @@ public:
 
 private:
     void map_geometry(const ShotRecord&);    // host: same as CPU, then upload rec_index
+
+    // Reads cudaMemGetInfo and keeps the highest "used" value seen. Called
+    // right after every group of cudaMalloc calls (docs/PROFILING_STRATEGY.md M2).
+    void record_device_memory();
+    std::size_t peak_device_bytes_ = 0;
 
     // V2 and every rung built on it (V3, V4) fuse imaging into the backward
     // stencil kernel and so need the per-shot receiver marker / unique list

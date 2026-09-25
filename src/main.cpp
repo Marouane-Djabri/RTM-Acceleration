@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "benchmark.hpp"
+#include "nvtx_range.hpp"
 #include "comparison.hpp"
 #include "rtm_factory.hpp"
 #include "rtm_io.hpp"
@@ -122,6 +123,7 @@ int main(int argc, char** argv) try {
     // ---------------- STAGE 1: DATA LOADING -------------------------------
     std::unique_ptr<RTMEngine> engine = make_engine(engine_name, requested_gpus);
     Timer io_timer;
+    auto read_inputs_range = std::make_unique<NvtxRange>("read inputs");
 
     // Auto-detected sidecar. Precedence (documented in the README): an explicit
     // CLI flag wins, then --vel-header, then <velocity>.hdr. Testing a field
@@ -157,13 +159,17 @@ int main(int argc, char** argv) try {
         for (auto& s : shots) mute_direct_wave(s, mute_v, 1.0f / par.f0, 1.0f / par.f0);
 
     engine->times.io = io_timer.elapsed();
+    read_inputs_range.reset();
 
     TimeAxis ta;
     ta.nt = (nt_override > 0) ? std::min(nt_override, shots[0].nt) : shots[0].nt;
     ta.dt = shots[0].dt;
 
     // ---------------- STAGE 2: SETUP + SANITY CHECKS ----------------------
-    engine->setup(model, par, ta);
+    {
+        NvtxRange range("setup");
+        engine->setup(model, par, ta);
+    }
     const Grid& g = engine->grid();
 
     const float dt_max = max_stable_dt(model.vmax(), g, par.order);
@@ -197,9 +203,13 @@ int main(int argc, char** argv) try {
     // ---------------- STAGE 3: MIGRATION ----------------------------------
     std::vector<float> image, illum;
     std::printf("=== MIGRATION (%s) ===\n", engine->name());
-    engine->migrate(shots, image, illum);
+    {
+        NvtxRange range("migrate");
+        engine->migrate(shots, image, illum);
+    }
 
     // ---------------- STAGE 4: OUTPUT -------------------------------------
+    NvtxRange write_output_range("write output");
     io::write_raw_floats(out_path, image);   // RAW zero-lag XCorr = the reference
     std::printf("\nwrote %s  (%d x %d float32, image[ix*nz+iz])\n",
                 out_path.c_str(), g.nx, g.nz);
@@ -232,6 +242,7 @@ int main(int argc, char** argv) try {
     ctx.store_interval = par.store_interval;
     ctx.snapshot_bytes = engine->snapshot_bytes();
     ctx.results.push_back({engine->name(), engine->times, engine->is_gpu()});
+    ctx.results.back().peak_device_bytes = engine->peak_device_bytes();
     print_benchmark_report(std::cout, ctx);
     if (!bench_path.empty()) {
         std::ofstream bf(bench_path, std::ios::app);

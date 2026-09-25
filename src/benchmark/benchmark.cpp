@@ -58,8 +58,14 @@ void print_benchmark_report(std::ostream& os, const BenchmarkContext& c) {
            << "    Imaging:       " << fmt_time(r.t.imaging)  << "\n"
            << "    Total:         " << fmt_time(r.t.total)    << "\n";
         const double prop = r.t.forward + r.t.backward;
-        if (prop > 0.0)
+        if (prop > 0.0) {
             os << "    Stencil rate:  " << (gflop / prop) << " GFLOP/s\n";
+            os << "    Throughput:    " << (pts * c.nt * 2.0 * c.nshots / prop * 1e-9)
+               << " GPts/s (extended grid points x steps / propagation time)\n";
+        }
+        if (r.peak_device_bytes > 0)
+            os << "    Device memory: " << (r.peak_device_bytes / (1024.0 * 1024.0))
+               << " MiB peak in use (cudaMemGetInfo, includes the CUDA context)\n";
         if (ref_total > 0.0 && r.t.total > 0.0 && &r != &c.results[0])
             os << "    Speedup:       " << (ref_total / r.t.total) << " x\n";
         os << "\n";
@@ -108,7 +114,38 @@ static const char* BENCHMARK_CSV_HEADER =
     "date,host,cpu_name,threads,gpu_name,gpus,engine,dataset,"
     "nx,nz,nb,order,nt,dt,nshots,store_interval,"
     "t_io,t_h2d,t_forward,t_backward,t_imaging,t_d2h,t_total,"
-    "stencil_gflop,stencil_gflops,snapshot_mib\n";
+    "stencil_gflop,stencil_gflops,snapshot_mib,gpts_per_s,device_mem_mib\n";
+
+// A CSV written by an older build has fewer columns. Rewrite it in place with
+// the current header and empty values for the new columns, so old and new
+// rows stay readable by the plotting scripts. Refuses anything that is not
+// an older version of this same header.
+static void upgrade_benchmark_csv_header(const std::string& path) {
+    std::ifstream in(path);
+    if (!in) return;
+    std::string old_header;
+    if (!std::getline(in, old_header)) return;
+    std::string new_header = BENCHMARK_CSV_HEADER;
+    new_header.pop_back();   // the '\n'
+    if (old_header == new_header) return;
+    if (new_header.compare(0, old_header.size(), old_header) != 0)
+        throw std::runtime_error("unexpected header in " + path +
+                                 " (not an older benchmark CSV); move it aside");
+
+    const auto count_columns = [](const std::string& line) {
+        return (int)std::count(line.begin(), line.end(), ',') + 1;
+    };
+    const int missing_columns = count_columns(new_header) - count_columns(old_header);
+    std::vector<std::string> rows;
+    std::string line;
+    while (std::getline(in, line))
+        if (!line.empty()) rows.push_back(line + std::string((std::size_t)missing_columns, ','));
+    in.close();
+
+    std::ofstream out(path, std::ios::trunc);
+    out << new_header << '\n';
+    for (const std::string& row : rows) out << row << '\n';
+}
 
 void append_benchmark_csv(const std::string& path, const BenchmarkContext& c,
                           const EngineResult& r, const RunInfo& info) {
@@ -119,6 +156,7 @@ void append_benchmark_csv(const std::string& path, const BenchmarkContext& c,
         if (existing && existing.peek() != std::ifstream::traits_type::eof())
             need_header = false;
     }
+    if (!need_header) upgrade_benchmark_csv_header(path);
     std::ofstream out(path, std::ios::app);
     if (!out) throw std::runtime_error("cannot append benchmark csv: " + path);
     if (need_header) out << BENCHMARK_CSV_HEADER;
@@ -128,6 +166,9 @@ void append_benchmark_csv(const std::string& path, const BenchmarkContext& c,
     const double gflop  = points * c.nt * 2.0 * c.nshots * flops_per_point * 1e-9;
     const double propagation_seconds = r.t.forward + r.t.backward;
     const double gflops = propagation_seconds > 0.0 ? gflop / propagation_seconds : 0.0;
+    const double gpts_per_s = propagation_seconds > 0.0
+        ? points * c.nt * 2.0 * c.nshots / propagation_seconds * 1e-9 : 0.0;
+    const double device_mem_mib = r.peak_device_bytes / (1024.0 * 1024.0);
 
     out << std::setprecision(9)
         << date_now_iso() << ',' << csv_safe(info.host) << ',' << csv_safe(info.cpu_name) << ','
@@ -137,7 +178,8 @@ void append_benchmark_csv(const std::string& path, const BenchmarkContext& c,
         << c.dt << ',' << c.nshots << ',' << c.store_interval << ','
         << r.t.io << ',' << r.t.h2d << ',' << r.t.forward << ',' << r.t.backward << ','
         << r.t.imaging << ',' << r.t.d2h << ',' << r.t.total << ','
-        << gflop << ',' << gflops << ',' << (c.snapshot_bytes / (1024.0 * 1024.0)) << '\n';
+        << gflop << ',' << gflops << ',' << (c.snapshot_bytes / (1024.0 * 1024.0)) << ','
+        << gpts_per_s << ',' << device_mem_mib << '\n';
 }
 
 } // namespace rtm

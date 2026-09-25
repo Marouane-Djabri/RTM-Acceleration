@@ -44,7 +44,10 @@ Usage (see docs/runbook/15_devito_reference.md):
         --order 8 --nb 50 --f0 10 --store-interval 10 --mute-direct 1500
 """
 import argparse
+import contextlib
 import csv
+import json
+import math
 import os
 import platform
 import socket
@@ -216,6 +219,54 @@ def build_devito_model(vp, nx, nz, dx, dz, ox, oz, nb, order, f0, dt, nt,
 
 
 # =============================================================================
+# Stability check (same formula as the C++ engine, src/rtm/rtm.cpp)
+# =============================================================================
+
+def stencil_abs_sum(order):
+    """|c0| + 2*sum|ck| of the Taylor central 2nd-derivative stencil of this order."""
+    half = order // 2
+    coefficients = []
+    for k in range(1, half + 1):
+        ck = 2.0 * (-1) ** (k + 1) * math.factorial(half) ** 2 / (
+            k * k * math.factorial(half - k) * math.factorial(half + k))
+        coefficients.append(ck)
+    c0 = -2.0 * sum(coefficients)
+    return abs(c0) + 2.0 * sum(abs(c) for c in coefficients)
+
+
+def max_stable_dt(vmax, dx, dz, order):
+    return 2.0 / (vmax * math.sqrt(stencil_abs_sum(order) * (1.0 / dx ** 2 + 1.0 / dz ** 2)))
+
+
+# =============================================================================
+# Profiling helpers (docs/PROFILING_STRATEGY.md §6.2)
+# =============================================================================
+
+def nvtx_range_factory(enabled):
+    """Named ranges on the Nsight Systems timeline, or no-ops without --nvtx."""
+    if not enabled:
+        return lambda name: contextlib.nullcontext()
+    try:
+        import nvtx
+    except ImportError:
+        raise SystemExit("--nvtx needs the nvtx package: pip install nvtx")
+    return lambda name: nvtx.annotate(name)
+
+
+def devito_performance(summary):
+    """Devito's own GPts/s, GFlops/s and operational intensity for one apply(),
+    when DEVITO_PROFILING=advanced made it compute them; None otherwise."""
+    # Devito 4.8 splits them: GPts/s under "fdlike", GFlops/s + OI under
+    # "vanilla"; the "-nosetup" variants leave out the operator's setup time.
+    try:
+        fdlike = summary.globals.get("fdlike-nosetup") or summary.globals["fdlike"]
+        vanilla = summary.globals.get("vanilla-nosetup") or summary.globals["vanilla"]
+        return dict(gpts=float(fdlike.gpointss), gflops=float(vanilla.gflopss), oi=float(vanilla.oi))
+    except (AttributeError, KeyError, TypeError):
+        return None
+
+
+# =============================================================================
 # Main
 # =============================================================================
 
@@ -236,7 +287,15 @@ def main():
     p.add_argument("--benchmark-csv", default=None,
                     help="append one timing row (own schema, not results/benchmarks.csv)")
     p.add_argument("--dataset", default="marmousi12")
+    p.add_argument("--nt", type=int, default=0,
+                    help="truncate the time axis to N steps (short Nsight Compute runs)")
+    p.add_argument("--nvtx", action="store_true",
+                    help="named NVTX ranges per shot / forward / backward (pip install nvtx)")
+    p.add_argument("--run-json", default=None,
+                    help="write this run's timings + Devito performance numbers as JSON "
+                         "(read by scripts/pod/scaling_row.py)")
     a = p.parse_args()
+    nvtx_range = nvtx_range_factory(a.nvtx)
 
     print(f"=== reading velocity: {a.velocity} ===")
     vp, nx, nz, dx, dz, ox, oz = read_velocity(a.velocity)
@@ -249,6 +308,20 @@ def main():
     n_migrate = nshots if a.max_shots <= 0 else min(a.max_shots, nshots)
     if n_migrate != nshots:
         print(f"  --max-shots: migrating only {n_migrate}/{nshots} shots")
+    if 0 < a.nt < nt:
+        print(f"  --nt: truncating the time axis to {a.nt} of {nt} steps")
+        nt = a.nt
+        traces = traces[:, :, :nt]
+
+    dt_max = max_stable_dt(float(vp.max()), dx, dz, a.order)
+    print(f"  CFL: dt = {dt:.6g} s, dt_max = {dt_max:.6g} s for order {a.order} "
+          f"(ratio {dt / dt_max:.3f})")
+    if dt > dt_max:
+        raise SystemExit("time step violates the CFL condition for this order")
+    nxe_print, nze_print = nx + 2 * a.nb, nz + 2 * a.nb
+    print(f"  saved wavefield lives on the extended grid: {nxe_print}x{nze_print} vs "
+          f"{nx}x{nz} interior ({nxe_print * nze_print / (nx * nz):.2f}x the memory of an "
+          f"interior-only save)")
 
     print(f"=== building Devito operators (order={a.order}, nb={a.nb}, compiled once) ===")
     t_build0 = walltime.time()
@@ -256,12 +329,18 @@ def main():
                                 dt, nt, a.store_interval, a.sponge_alpha)
     op_fwd, rec_fwd = model["make_fwd"](nrec)
     op_adj, rec_adj = model["make_adj"](nrec)
-    print(f"  JIT compile: {walltime.time() - t_build0:.1f} s")
+    # Devito compiles lazily on the first apply(); force it here so the
+    # compile time is measured on its own and never counted as migration.
+    op_fwd.cfunction
+    op_adj.cfunction
+    jit_seconds = walltime.time() - t_build0
+    print(f"  JIT compile: {jit_seconds:.1f} s")
 
     image = model["image"]
     u, v, usave = model["u"], model["v"], model["usave"]
 
     t_total0 = walltime.time()
+    performance_samples = []
     for ishot in range(n_migrate):
         t_shot0 = walltime.time()
         shot_traces = np.array(traces[ishot], dtype=np.float32)   # (nrec, nt), copy off the memmap
@@ -274,14 +353,22 @@ def main():
         rec_fwd.coordinates.data[:, 1] = rz[ishot]
 
         u.data[:] = 0.0
-        op_fwd.apply(dt=dt)
+        with nvtx_range(f"shot {ishot + 1}"):
+            with nvtx_range("devito forward"):
+                summary_fwd = op_fwd.apply(dt=dt)
 
         rec_adj.coordinates.data[:, 0] = rx[ishot]
         rec_adj.coordinates.data[:, 1] = rz[ishot]
         rec_adj.data[:] = shot_traces.T                          # (nt, nrec), reverse-time injection
 
         v.data[:] = 0.0
-        op_adj.apply(dt=dt)
+        with nvtx_range(f"shot {ishot + 1}"):
+            with nvtx_range("devito backward"):
+                summary_adj = op_adj.apply(dt=dt)
+        for summary in (summary_fwd, summary_adj):
+            performance = devito_performance(summary)
+            if performance:
+                performance_samples.append(performance)
 
         print(f"  shot {ishot + 1}/{n_migrate}  sx={sx[ishot]:.0f} m  "
               f"{walltime.time() - t_shot0:.1f} s")
@@ -289,6 +376,21 @@ def main():
     t_migrate = walltime.time() - t_total0
     print(f"=== migrated {n_migrate} shots in {t_migrate:.1f} s "
           f"({t_migrate / n_migrate:.1f} s/shot) ===")
+
+    if a.run_json:
+        nxe, nze = nx + 2 * a.nb, nz + 2 * a.nb
+        run = dict(nshots=n_migrate, t_migrate_s=t_migrate, s_per_shot=t_migrate / n_migrate,
+                   gpts_per_s=nxe * nze * nt * 2 * n_migrate / t_migrate / 1e9,
+                   jit_s=jit_seconds, nx=nx, nz=nz, nb=a.nb, nt=nt, order=a.order,
+                   devito_language=os.environ.get("DEVITO_LANGUAGE", ""),
+                   devito_platform=os.environ.get("DEVITO_PLATFORM", ""))
+        if performance_samples:
+            for key in ("gpts", "gflops", "oi"):
+                run["devito_" + key] = sum(s[key] for s in performance_samples) / len(performance_samples)
+        os.makedirs(os.path.dirname(os.path.abspath(a.run_json)) or ".", exist_ok=True)
+        with open(a.run_json, "w") as f:
+            json.dump(run, f, indent=1)
+        print(f"wrote {a.run_json}")
 
     img_interior = np.asarray(image.data)[a.nb:a.nb + nx, a.nb:a.nb + nz].astype(np.float32)
     os.makedirs(os.path.dirname(os.path.abspath(a.output)) or ".", exist_ok=True)

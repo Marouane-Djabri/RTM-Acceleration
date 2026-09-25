@@ -94,6 +94,17 @@ if(RTM_CUDA_ENABLED)
   target_compile_definitions(rtm_core PUBLIC RTM_WITH_CUDA)
   set_target_properties(rtm_core PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
   target_compile_options(rtm_core PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)
+
+  # NVTX ranges for Nsight Systems (include/nvtx_range.hpp). NVTX v3 is
+  # header-only and ships with the toolkit; it only needs the CUDA include
+  # directory (also for the plain C++ files such as main.cpp) and libdl.
+  option(RTM_WITH_NVTX "Named NVTX ranges on the profiler timeline" ON)
+  if(RTM_WITH_NVTX)
+    find_package(CUDAToolkit REQUIRED)
+    target_include_directories(rtm_core PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+    target_compile_definitions(rtm_core PUBLIC RTM_WITH_NVTX)
+    target_link_libraries(rtm_core PUBLIC ${CMAKE_DL_LIBS})
+  endif()
 endif()
 
 # ---------------------------------------------------------------------------

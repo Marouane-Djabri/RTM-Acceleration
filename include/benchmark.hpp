@@ -34,6 +34,7 @@ struct EngineResult {
     std::string name;
     StageTimes  t;
     bool        gpu = false;   // print H2D/Kernel/D2H rows
+    std::size_t peak_device_bytes = 0;   // RTMEngine::peak_device_bytes(), 0 on CPU
 };
 
 struct BenchmarkContext {

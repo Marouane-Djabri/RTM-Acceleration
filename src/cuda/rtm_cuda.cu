@@ -3,6 +3,7 @@
 #include "cuda_check.hpp"
 #include "kernels_cuda.hpp"
 #include "benchmark.hpp"
+#include "nvtx_range.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -113,6 +114,15 @@ void CUDARTM::setup(const VelocityModel& model, const RTMParams& par,
     // lifetime (unlike d_rec_index_/d_traces_, which grow with nrec).
     if (uses_receiver_marker())
         CUDA_CHECK(cudaMalloc(&d_is_receiver_, g_.n_extended() * sizeof(unsigned char)));
+
+    record_device_memory();
+}
+
+void CUDARTM::record_device_memory() {
+    std::size_t free_bytes = 0, total_bytes = 0;
+    CUDA_CHECK(cudaMemGetInfo(&free_bytes, &total_bytes));
+    const std::size_t used_bytes = total_bytes - free_bytes;
+    if (used_bytes > peak_device_bytes_) peak_device_bytes_ = used_bytes;
 }
 
 std::string CUDARTM::device_name() const {
@@ -171,6 +181,7 @@ void CUDARTM::map_geometry(const ShotRecord& shot) {
             CUDA_CHECK(cudaMalloc(&d_unique_rec_ext_, (std::size_t)nrec * sizeof(int)));
         }
         nrec_cap_ = nrec;
+        record_device_memory();
     }
     if (nrec > 0)
         CUDA_CHECK(cudaMemcpy(d_rec_index_, rec_index.data(), (std::size_t)nrec * sizeof(int),
@@ -220,6 +231,7 @@ void CUDARTM::migrate(const std::vector<ShotRecord>& shots,
     CUDA_CHECK(cudaMalloc(&d_illum_, nxz * sizeof(float)));
     CUDA_CHECK(cudaMemset(d_image_, 0, nxz * sizeof(float)));
     CUDA_CHECK(cudaMemset(d_illum_, 0, nxz * sizeof(float)));
+    record_device_memory();
 
     image.assign(nxz, 0.0f);
     illumination.assign(nxz, 0.0f);
@@ -234,10 +246,18 @@ void CUDARTM::migrate(const std::vector<ShotRecord>& shots,
         // snapshots/image/illumination arguments are ignored by these
         // overrides (device-resident); the real destinations are d_snap_,
         // d_image_, d_illum_.
-        forward_propagation(shots[is], nullptr, nullptr);
-        backward_propagation(shots[is], {}, image, illumination);
+        NvtxRange shot_range("shot " + std::to_string(is + 1));
+        {
+            NvtxRange range("forward");
+            forward_propagation(shots[is], nullptr, nullptr);
+        }
+        {
+            NvtxRange range("backward");
+            backward_propagation(shots[is], {}, image, illumination);
+        }
     }
 
+    NvtxRange download_range("download image");
     Timer d2h;
     CUDA_CHECK(cudaMemcpy(image.data(),        d_image_, nxz * sizeof(float), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(illumination.data(), d_illum_, nxz * sizeof(float), cudaMemcpyDeviceToHost));

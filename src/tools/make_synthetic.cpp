@@ -137,7 +137,10 @@ int main(int argc, char** argv) try {
     }
 
     RTMParams par;
-    par.nb = nb; par.order = order; par.f0 = f0; par.store_interval = 1;
+    // Modelling only records traces; the source-wavefield snapshots are never
+    // used. store_interval = nt keeps a single snapshot slot, so the GPU
+    // engines do not try to allocate nt full snapshots at fine grids.
+    par.nb = nb; par.order = order; par.f0 = f0; par.store_interval = nt;
     TimeAxis ta; ta.nt = nt; ta.dt = dt;
 
     auto engine = make_engine(engine_name);

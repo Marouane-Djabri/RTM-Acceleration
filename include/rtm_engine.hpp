@@ -71,6 +71,9 @@ public:
     virtual int         num_devices() const { return 0; }       // GPUs used
     virtual std::string device_name() const { return "cpu"; }   // e.g. "NVIDIA A4000"
     virtual bool        is_gpu()      const { return false; }   // print H2D/D2H rows
+    // Highest device memory in use seen during the run (cudaMemGetInfo:
+    // total - free, so it includes the CUDA context). 0 for CPU engines.
+    virtual std::size_t peak_device_bytes() const { return 0; }
 
     StageTimes times;
 
