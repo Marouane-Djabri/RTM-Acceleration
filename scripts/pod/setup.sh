@@ -66,16 +66,41 @@ if ./build/rtm --list-engines | grep -q cuda-v0; then
     fi
 fi
 
+# Rows in results/ tagged with THIS machine's hostname (the CSVs' "host" column).
+# Files synced from an earlier pod do not count: every pod measures its own.
+this_host="$(hostname)"
+has_row_for_this_host() {   # has_row_for_this_host FILE [ENGINE]
+    [ -s "$1" ] && python3 - "$1" "$this_host" "${2:-}" <<'PYEOF'
+import csv, sys
+path, host, engine = sys.argv[1], sys.argv[2], sys.argv[3]
+rows = csv.DictReader(open(path, newline=""))
+sys.exit(0 if any(r.get("host") == host and (not engine or r.get("engine") == engine) for r in rows) else 1)
+PYEOF
+}
+
 step "5/6 bandwidth probe"
-if [ ! -s results/ref/bandwidth.csv ]; then
-    ./build/rtm_bandwidth_probe --csv results/ref/bandwidth.csv
+if has_row_for_this_host results/ref/bandwidth.csv; then
+    echo "bandwidth already measured on this machine ($this_host), skipping"
 else
-    echo "results/ref/bandwidth.csv exists, skipping"; cat results/ref/bandwidth.csv
+    ./build/rtm_bandwidth_probe --csv results/ref/bandwidth.csv
 fi
 
-step "6/6 CPU reference on the fixed dataset (once)"
-if [ -s "$REFERENCE_IMAGE" ]; then
-    echo "$REFERENCE_IMAGE exists, skipping"
+step "6/6 CPU reference on the fixed dataset (once per machine)"
+if [ -s "$REFERENCE_IMAGE" ] && has_row_for_this_host results/benchmarks.csv cpu; then
+    echo "$REFERENCE_IMAGE exists and the cpu timing of this machine is recorded, skipping"
+elif [ -s "$REFERENCE_IMAGE" ]; then
+    # The image came from another machine (synced). Keep it as the gate reference,
+    # but time the CPU reference HERE, so "speedup vs cpu" uses this machine's CPU,
+    # and check that this machine reproduces the reference image.
+    ./build/rtm --engine cpu --velocity "$MARMOUSI_VEL" --shots "$MARMOUSI_SHOTS" \
+        --output results/images/cpu_reference_this_machine.bin \
+        --order "$ORDER" --nb "$NB" --f0 "$F0" --store-interval "$STORE_INTERVAL" \
+        --mute-direct "$MUTE_VELOCITY" \
+        --dataset "$DATASET_NAME" --benchmark-csv results/benchmarks.csv \
+        --benchmark results/benchmark_reports.txt
+    ./build/rtm_compare "$REFERENCE_IMAGE" results/images/cpu_reference_this_machine.bin \
+        --csv results/compare.csv --engine cpu --dataset "$DATASET_NAME" | tail -1 \
+        || echo "*** this machine does NOT reproduce the reference image; tell Claude before trusting the gates ***"
 else
     ./build/rtm --engine cpu --velocity "$MARMOUSI_VEL" --shots "$MARMOUSI_SHOTS" \
         --output "$REFERENCE_IMAGE" \

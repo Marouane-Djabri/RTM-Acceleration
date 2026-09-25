@@ -123,10 +123,9 @@ def grid_of(velocity_path, nb):
 
 
 def measured_gpu_bandwidth_gbs():
-    for row in read_csv_rows("results/ref/bandwidth.csv"):
-        if row.get("device_kind") == "gpu":
-            return to_float(row["gbps"])
-    return None
+    """The most recent GPU row: the probe appends one per pod, the latest is this run's."""
+    gpu_rows = [r for r in read_csv_rows("results/ref/bandwidth.csv") if r.get("device_kind") == "gpu"]
+    return to_float(gpu_rows[-1]["gbps"]) if gpu_rows else None
 
 
 # =============================================================================
