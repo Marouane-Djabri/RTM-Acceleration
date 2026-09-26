@@ -10,7 +10,11 @@
 #   DT      = 0.1 ms x DECIMATION            (CFL: dt shrinks with dx)
 #   NT      = 2.8 s / DT                     (same record length everywhere)
 #   F0      = 10 Hz x 12.5 m / dx            (same points per wavelength everywhere)
-#   STORE_INTERVAL = 10 ms / DT              (snapshot policy A: one per 10 ms)
+#   STORE_INTERVAL = 10 steps                (snapshot policy A). Constant in STEPS,
+#             not in ms: f0 grows as 1/dx, so the wave period shrinks with DT;
+#             10 steps keeps the same samples per period at every dx. (A fixed
+#             10 ms aliases the imaging condition at fine grids: at 2.5 m the
+#             Ricker reaches ~125 Hz, which needs a sample every <= 4 ms.)
 #   NB      = 50 cells at every dx: the wavelength shrinks with dx, so a fixed
 #             number of cells is a fixed number of wavelengths of sponge.
 #
@@ -37,7 +41,7 @@ d = int(sys.argv[1])
 dt = 1e-4 * d
 nt = math.ceil(2.8 / dt - 1e-9)
 f0 = 10.0 * 10 / d
-store = max(1, round(0.010 / dt))
+store = 10
 print(f"{dt:.6g} {nt} {f0:.6g} {store}")
 EOF
 )"
@@ -47,7 +51,8 @@ log_step "dataset dx=$dx m (decimation $decimation): DT=$DT NT=$NT F0=$F0 STORE_
 
 if [ ! -s "$dir/velocity.bin" ]; then
     if [ ! -s "$segy" ]; then
-        tar xzf data/real/MODEL_P-WAVE_VELOCITY_1.25m.segy.tar.gz -C data/real
+        # --no-same-owner: RunPod network volumes refuse chown, which tar attempts as root.
+        tar xzf data/real/MODEL_P-WAVE_VELOCITY_1.25m.segy.tar.gz -C data/real --no-same-owner
     fi
     python3 scripts/segy_to_raw.py "$segy" "$dir/velocity.bin" \
         --dx 1.25 --dz 1.25 --decimate-x "$decimation" --decimate-z "$decimation" --vmin-clip 1000
@@ -70,7 +75,7 @@ REC_Z=25
 ORDER=8
 NB=50
 STORE_INTERVAL=$STORE_INTERVAL
-SNAPSHOT_MS=10
+SNAPSHOT_MS=$(awk -v dt="$DT" 'BEGIN { printf "%g", 10 * dt * 1000 }')
 MUTE_VELOCITY=1500
 EOF
 

@@ -25,6 +25,62 @@ NCU_NT=600
 
 log_step() { echo; echo "=== $* ==="; }
 
+# Cores this container may actually use. `nproc` reports every core of the
+# host (256 on some RunPod machines) even when the pod is only allowed ~8
+# cores of CPU time (cgroup quota). OpenMP then starts one thread per host
+# core, they fight over the few allowed cores, and cpu-opt / Devito-CPU crawl.
+pod_cpu_count() {
+    local quota period cores
+    if [ -r /sys/fs/cgroup/cpu.max ]; then                        # cgroup v2: "quota period" or "max period"
+        read -r quota period < /sys/fs/cgroup/cpu.max
+    elif [ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us ]; then         # cgroup v1: quota -1 = unlimited
+        quota=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us)
+        period=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us)
+    fi
+    cores=$(nproc)
+    if [[ "${quota:-max}" =~ ^[0-9]+$ ]] && [ "${period:-0}" -gt 0 ]; then
+        local allowed=$(( (quota + period - 1) / period ))       # round up
+        [ "$allowed" -ge 1 ] && [ "$allowed" -lt "$cores" ] && cores=$allowed
+    fi
+    echo "$cores"
+}
+# Every pod script (and everything run_all.sh starts) inherits this, unless
+# the caller already chose OMP_NUM_THREADS.
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-$(pod_cpu_count)}"
+
+# Install what a bare CUDA image may lack: cmake/python3 for the build and
+# scripts, and Nsight Systems (CUDA *devel* images ship ncu but often not nsys;
+# the CUDA apt repository they come with has it).
+ensure_pod_tools() {
+    local missing=()
+    for tool in cmake g++ git python3 rsync; do command -v "$tool" >/dev/null || missing+=("$tool"); done
+    python3 -c "import venv, ensurepip" 2>/dev/null || missing+=(python3-venv python3-pip)
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "installing: ${missing[*]}"
+        apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            "${missing[@]}" >/dev/null
+    fi
+    # matplotlib from pip, matching the image's numpy. Ubuntu's python3-matplotlib
+    # breaks against the pip-installed numpy 2 of CUDA/PyTorch images, and Ubuntu
+    # 24.04 refuses plain "pip install" (PEP 668), hence the two extra flags.
+    if ! python3 -c "import matplotlib" 2>/dev/null; then
+        echo "installing matplotlib (pip)"
+        python3 -m pip install -q matplotlib 2>/dev/null ||
+            python3 -m pip install -q --break-system-packages --ignore-installed matplotlib >/dev/null 2>&1
+    fi
+    if ! command -v nsys >/dev/null; then
+        # The package list may never have been downloaded on a fresh image.
+        apt-get update -qq
+        local package
+        package=$(apt-cache search --names-only '^nsight-systems-[0-9]' | awk '{print $1}' | sort -V | tail -1)
+        if [ -n "$package" ]; then
+            echo "installing $package"
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$package" >/dev/null
+        fi
+        command -v nsys >/dev/null || echo "*** nsys not available: the Nsight Systems phases will fail"
+    fi
+}
+
 # Path of the env file describing one scaled dataset (written by make_scaled_dataset.sh).
 scaled_env_file() {
     local decimation="$1"
@@ -161,20 +217,23 @@ EOF
 }
 
 # ---- One timed run of OUR engine at one sweep point -------------------------
-# run_timing_point ENGINE SWEEP STORE_INTERVAL SNAPSHOT_MS ORDER IMAGE_PATH
+# run_timing_point ENGINE SWEEP STORE_INTERVAL ORDER IMAGE_PATH
+# STORE_INTERVAL is the snapshot interval in TIME STEPS (see make_scaled_dataset.sh).
 # Needs load_dataset first. Runs rtm without a profiler (clean timing) while
 # nvidia-smi logs memory + power, then appends one row to results/scaling.csv.
 # Sets LAST_STATUS to ok | oom | fail. Never exits the calling script:
 # running out of memory is a data point, not an error.
 run_timing_point() {
-    local engine="$1" sweep="$2" store="$3" snapshot_ms="$4" order="$5" image="$6"
+    local engine="$1" sweep="$2" store="$3" order="$4" image="$5"
+    local snapshot_ms
+    snapshot_ms=$(awk -v s="$store" -v dt="$DT" 'BEGIN { printf "%g", s * dt * 1000 }')
     local run_dir="$PROFILES_DIR/$DATASET_NAME/runs"
-    local name="${engine}_${sweep}_order${order}_snap${snapshot_ms}ms"
+    local name="${engine}_${sweep}_order${order}_every${store}steps"
     mkdir -p "$run_dir" "$(dirname "$image")"
     local bench_csv="$run_dir/$name.bench.csv" log="$run_dir/$name.log" monitor="$run_dir/$name.gpu.csv"
     rm -f "$bench_csv"
 
-    echo "--- run: $engine on $DATASET_NAME, sweep $sweep, order $order, snapshot every $snapshot_ms ms"
+    echo "--- run: $engine on $DATASET_NAME, sweep $sweep, order $order, snapshot every $store steps ($snapshot_ms ms)"
     gpu_monitor_start "$monitor"
     ./build/rtm --engine "$engine" "${RTM_DATA_ARGS[@]}" --store-interval "$store" --order "$order" \
         --output "$image" --dataset "$DATASET_NAME" --benchmark-csv "$bench_csv" --quiet \

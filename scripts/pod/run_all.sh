@@ -57,13 +57,14 @@ declare -A STATUS
 run_phase_commands() {
     case "$1" in
         preflight)
+            ensure_pod_tools
             {
                 date
                 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
                 echo "nsys: $(nsys --version 2>&1 | head -1)"
                 echo "ncu:  $(ncu --version 2>&1 | tail -1)"
                 echo "nvcc: $(nvcc --version | tail -1)"
-                echo "cpu:  $(nproc) cores"
+                echo "cpu:  $(nproc) cores visible, $(pod_cpu_count) allowed -> OMP_NUM_THREADS=$OMP_NUM_THREADS"
             } | tee "$PROFILES_DIR/TOOLS.txt"
             echo ">>> Your Nsight GUIs must be at least these nsys/ncu versions to open the reports."
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=native >/dev/null &&
@@ -87,7 +88,7 @@ run_phase_commands() {
         devito_grid)  scripts/pod/devito_sweep.sh grid ;;
         devito_order) scripts/pod/devito_sweep.sh order ;;
         report)
-            python3 -c "import matplotlib" 2>/dev/null || python3 -m pip install -q matplotlib
+            python3 -c "import matplotlib" 2>/dev/null || ensure_pod_tools
             python3 scripts/profile_extract.py &&
             python3 scripts/project_survey.py --survey-shots 1000 --dx 6.25 &&
             python3 scripts/project_survey.py --survey-shots 1000 --dx 2.5 ;;

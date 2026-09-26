@@ -548,7 +548,8 @@ Two snapshot policies:
   (`store_interval` = 10 ms / DT, so nsnap ≈ 281 is constant). Memory grows with
   grid points. **This finds the ceiling.**
 * **Policy B, trade accuracy for capacity:** at 2.5 m and 1.25 m, snapshots every
-  20, 40 and 80 ms. At 2.5 m policy A still fits, so `rtm_compare` against the
+  5, 20, 40 and 80 ms. The denser 5 ms spacing (~80 GiB at 1.25 m) keeps an
+  out-of-memory ceiling on 48 GB cards such as the A40, where 10 ms at 1.25 m fits. At 2.5 m policy A still fits, so `rtm_compare` against the
   policy-A image measures the accuracy cost (chart D7b). At 1.25 m it shows which
   spacing makes the largest grid fit. **This shows how far the ceiling moves, and
   what it costs.**

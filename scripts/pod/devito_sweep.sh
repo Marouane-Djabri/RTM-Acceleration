@@ -40,11 +40,16 @@ run_devito_point() {
 
     echo "--- devito: $DATASET_NAME, sweep $sweep, order $order"
     gpu_monitor_start "$run_dir/$name.gpu.csv"
+    local exit_code=0
     python3 "$devito_script" "${common_args[@]}" --output "$image" \
-        --run-json "$run_dir/$name.json" > "$run_dir/$name.log" 2>&1 || true
+        --run-json "$run_dir/$name.json" > "$run_dir/$name.log" 2>&1 || exit_code=$?
     gpu_monitor_stop
     local status=fail
     if [ -s "$run_dir/$name.json" ]; then status=ok
+    elif [ "$exit_code" = 137 ]; then
+        # SIGKILL from the kernel's OOM killer: Devito keeps its saved wavefield
+        # in HOST memory, so its limit is the container's RAM, not the GPU's.
+        status=oom; echo "    Devito killed for exceeding host memory (exit 137)"
     elif grep -qiE "out of memory|MemoryError|OUT_OF_MEMORY|MemoryAllocation|cuMemAlloc" "$run_dir/$name.log"; then status=oom
     else echo "    *** Devito run failed, see $run_dir/$name.log"; tail -3 "$run_dir/$name.log"
     fi
@@ -108,7 +113,7 @@ EOF
         --snapshot-ms "$SNAPSHOT_MS" --status "$status" --devito-json "$run_dir/$name.json" \
         --monitor "$run_dir/$name.gpu.csv" --image "$image"
 
-    local ours="results/images/scaling/$DATASET_NAME/cuda-v1_snap10ms.bin"
+    local ours="results/images/scaling/$DATASET_NAME/cuda-v1_every${STORE_INTERVAL}steps.bin"
     [ "$sweep" = S2 ] && ours="results/images/scaling/$DATASET_NAME/cuda-v1_order${order}.bin"
     [ "$status" = ok ] && compare_images_row "$ours" "$image" "devito_vs_cuda-v1_order${order}"
     return 0
@@ -125,6 +130,8 @@ case "$mode" in
         done ;;
     order)
         load_dataset "$(scaled_env_file 2)"
+        STORE_INTERVAL=$(( STORE_INTERVAL * 4 ))    # same as order_sweep.sh: fits, throughput only
+        SNAPSHOT_MS=$(awk -v s="$STORE_INTERVAL" -v dt="$DT" 'BEGIN { printf "%g", s * dt * 1000 }')
         for order in 4 8 12 16; do
             log_step "Devito S2: $DATASET_NAME order $order"
             run_devito_point S2 "$order"

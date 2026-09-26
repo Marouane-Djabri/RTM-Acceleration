@@ -413,9 +413,9 @@ def plot_capacity(scaling):
     fig, ax = plt.subplots(figsize=(8, 5))
     total_gib = next((float(r["gpu_total_mib"]) / 1024 for r in rows if r["gpu_total_mib"]), None)
     # Estimate from the allocation formula (§5.1), so OOM points still show how much was needed.
-    for snapshot_ms in sorted({int(r["snapshot_ms"]) for r in rows}):
+    for store_interval in sorted({int(r["store_interval"]) for r in rows}):
         points, estimated, measured_x, measured_y, oom_x, oom_y = [], [], [], [], [], []
-        for r in sorted((r for r in rows if int(r["snapshot_ms"]) == snapshot_ms),
+        for r in sorted((r for r in rows if int(r["store_interval"]) == store_interval),
                         key=lambda r: int(r["nx"]) * int(r["nz"])):
             nx, nz, nb, nt = int(r["nx"]), int(r["nz"]), int(r["nb"]), int(r["nt"])
             nsnap = (nt - 1) // int(r["store_interval"]) + 1
@@ -430,7 +430,7 @@ def plot_capacity(scaling):
                 oom_y.append(need_gib)
         line, = ax.plot(points, estimated, "--", alpha=0.6)
         ax.plot(measured_x, measured_y, "o", color=line.get_color(),
-                label=f"snapshot every {snapshot_ms} ms (measured; dashed = estimate)")
+                label=f"snapshot every {store_interval} steps (measured; dashed = estimate)")
         ax.plot(oom_x, oom_y, "x", color=line.get_color(), markersize=10, mew=2)
     # Devito: measured peak only (its memory use has no formula here).
     devito = sorted((r for r in scaling if r["code"] == "devito" and r["sweep"] == "S1"),
@@ -439,11 +439,11 @@ def plot_capacity(scaling):
     if ok:
         ax.plot([int(r["nx"]) * int(r["nz"]) for r in ok],
                 [float(r["device_mem_mib_peak"]) / 1024 for r in ok], "D-", color="#8064a2",
-                label="Devito GPU, snapshot every 10 ms (measured)")
+                label="Devito GPU (measured, its own run's snapshot spacing)")
     failed = [r for r in devito if r["status"] in ("oom", "fail")]
     if failed and total_gib:
         ax.plot([int(r["nx"]) * int(r["nz"]) for r in failed], [total_gib] * len(failed), "D",
-                color="#8064a2", markersize=10, mfc="none", label="Devito GPU: did not run (oom/fail)")
+                color="#8064a2", markersize=10, mfc="none", label="Devito GPU: out of host memory (it keeps snapshots in RAM)")
     if total_gib:
         ax.axhline(total_gib, color="red", lw=1.5, label=f"GPU memory ({total_gib:.0f} GiB)")
     ax.set_xscale("log")
@@ -457,21 +457,23 @@ def plot_capacity(scaling):
 
 
 def plot_snapshot_accuracy():
-    rows = [r for r in read_csv_rows("results/compare_scaling.csv") if "_vs_snap10ms" in r["engine"]]
+    rows = [r for r in read_csv_rows("results/compare_scaling.csv") if re.search(r"_every\d+steps_vs_every", r["engine"])]
     if not rows:
         return
     fig, ax = plt.subplots(figsize=(6, 4))
     by_dataset = defaultdict(list)
     for r in rows:
-        match = re.search(r"_snap(\d+)ms_vs", r["engine"])
+        match = re.search(r"_every(\d+)steps_vs", r["engine"])
         if match:
-            by_dataset[r["dataset"]].append((int(match.group(1)), float(r["l2_relative"])))
+            # Correlation, not L2: the image amplitude scales with the number of
+            # snapshots summed, so raw L2 mostly measures that scale, not the shape.
+            by_dataset[r["dataset"]].append((int(match.group(1)), float(r["correlation"])))
     for dataset, values in by_dataset.items():
         values.sort()
         ax.plot([v[0] for v in values], [v[1] for v in values], "o-", label=dataset)
-    ax.set_xlabel("snapshot spacing (ms)")
-    ax.set_ylabel("relative L2 error vs 10 ms")
-    ax.set_yscale("log")
+    ax.set_xlabel("snapshot spacing (time steps)")
+    ax.set_ylabel("image correlation with the 10-step image")
+    ax.set_ylim(top=1.01)
     ax.set_title("D7b: accuracy cost of storing fewer snapshots")
     ax.grid(which="both", alpha=0.3)
     ax.legend(fontsize=8)
@@ -479,15 +481,22 @@ def plot_snapshot_accuracy():
 
 
 def plot_efficiency(scaling, kernel_rows):
-    rows = [r for r in scaling if r["sweep"] == "S1" and r["status"] == "ok" and r["gpts_per_s"]]
+    # S1T = throughput rows kept from a run whose snapshot spacing was later
+    # corrected: spacing barely changes speed, so they still count here.
+    rows = [r for r in scaling if r["sweep"] in ("S1", "S1T") and r["status"] == "ok" and r["gpts_per_s"]]
     if not rows:
         return
     fig, ax = plt.subplots(figsize=(8, 5))
     ax_dram = ax.twinx()
     series = sorted({(r["code"], r["engine"]) for r in rows})
     for code, engine in series:
-        points = sorted(((int(r["nx"]) * int(r["nz"]), float(r["gpts_per_s"]), r["dataset"])
-                         for r in rows if r["engine"] == engine), key=lambda p: p[0])
+        by_size = {}
+        for r in rows:
+            if r["engine"] == engine:   # one point per grid size; the corrected S1 row wins
+                size = int(r["nx"]) * int(r["nz"])
+                if size not in by_size or r["sweep"] == "S1":
+                    by_size[size] = (size, float(r["gpts_per_s"]), r["dataset"])
+        points = sorted(by_size.values(), key=lambda p: p[0])
         line, = ax.plot([p[0] for p in points], [p[1] for p in points], "o-", label=f"{engine} GPts/s")
         ncu_engine = "devito" if code == "devito" else engine
         dram = []

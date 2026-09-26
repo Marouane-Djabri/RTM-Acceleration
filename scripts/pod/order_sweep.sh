@@ -17,10 +17,13 @@ orders="${2:-4 8 12}"
 env_file="$(scaled_env_file 2)"
 [ -f "$env_file" ] || { echo "$env_file missing: run scripts/pod/make_scaled_dataset.sh 2 first"; exit 1; }
 load_dataset "$env_file"
-log_step "S2 order sweep: $engine on $DATASET_NAME, orders $orders"
+# Throughput study only: snapshots every 40 steps (~13 GB at 2.5 m) so it fits
+# on 24 GB cards too; 10 steps would need ~53 GB. Spacing barely changes speed.
+STORE_INTERVAL=$(( STORE_INTERVAL * 4 ))
+log_step "S2 order sweep: $engine on $DATASET_NAME, orders $orders, snapshot every $STORE_INTERVAL steps"
 
 for order in $orders; do
-    run_timing_point "$engine" S2 "$STORE_INTERVAL" 10 "$order" \
+    run_timing_point "$engine" S2 "$STORE_INTERVAL" "$order" \
         "results/images/scaling/$DATASET_NAME/${engine}_order${order}.bin"
     scripts/pod/profile_ncu.sh "$engine" "$env_file" --quick --order "$order" || true
 done

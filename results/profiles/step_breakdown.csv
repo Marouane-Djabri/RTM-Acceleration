@@ -1,0 +1,6 @@
+engine,steps,kernel_launches_per_step,stencil us/step,stencil + imaging (fused) us/step,sponge us/step,imaging us/step,injection / recording us/step,other us/step,memcpy / memset us/step,gpu total us/step,cudaLaunchKernel us/step (CPU),migrate wall us/step,gpu busy %
+cuda-v0,67200,3.05,15.384,0.0,14.393,0.838,2.316,0.0,0.38,33.312,28.761,35.868,92.9
+cuda-v1,67200,2.05,23.506,0.0,0.0,0.899,2.411,0.0,0.39,27.205,21.787,29.049,93.7
+cuda-v2,67200,2.05,22.315,2.251,0.0,0.0,2.405,0.0,0.34,27.311,21.684,29.138,93.7
+cuda-v3,67200,2.05,23.113,2.323,0.0,0.0,2.505,0.0,0.425,28.366,22.506,30.215,93.9
+cuda-v4,67200,2.05,23.534,2.337,0.0,0.0,2.521,0.0,0.412,28.804,22.821,30.705,93.8

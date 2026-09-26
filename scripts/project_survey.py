@@ -63,7 +63,8 @@ def main():
     a = p.parse_args()
 
     scaling = [r for r in read_csv_rows("results/scaling.csv")
-               if r["dataset"] == f"marmousi_dx{a.dx}" and r["sweep"] in ("S1", "S1B") and r["status"] == "ok"]
+               if r["dataset"] == f"marmousi_dx{a.dx}" and r["sweep"] in ("S1", "S1B", "S1T", "S2")
+               and r["order"] == "8" and r["status"] == "ok"]
     if not scaling:
         raise SystemExit(f"no successful S1 rows for marmousi_dx{a.dx} in results/scaling.csv")
     reference = scaling[0]
@@ -74,7 +75,7 @@ def main():
     best = {}
     for r in scaling:
         key = r["engine"]
-        if key not in best or int(r["snapshot_ms"]) < int(best[key]["snapshot_ms"]):
+        if key not in best or int(r["store_interval"]) < int(best[key]["store_interval"]):
             best[key] = r
 
     lines = []   # (label, devices, hours, cost, kwh)
@@ -85,7 +86,7 @@ def main():
             hours = a.survey_shots * seconds_per_shot / devices / 3600
             cost = hours * devices * a.gpu_price_per_hour if a.gpu_price_per_hour else None
             kwh = hours * devices * power / 1000 if power else None
-            lines.append((f"{engine} ({r['gpu_name']}), snap {r['snapshot_ms']} ms", devices, hours, cost, kwh))
+            lines.append((f"{engine} ({r['gpu_name']}), snapshot every {r['store_interval']} steps", devices, hours, cost, kwh))
     for engine, (gpts, cpu_name, threads) in sorted(cpu_throughput_gpts().items()):
         hours = a.survey_shots * work_per_shot / (gpts * 1e9) / 3600
         cost = hours * a.cpu_node_price_per_hour if a.cpu_node_price_per_hour else None

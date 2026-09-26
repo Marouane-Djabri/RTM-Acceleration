@@ -24,7 +24,9 @@ pip install -q nvtx
 python3 -c "import devito, nvtx; print('devito', devito.__version__, '+ nvtx')"
 
 log_step "2/4 NVIDIA HPC SDK (nvc)"
-find_nvc_bin() { ls -d /opt/nvidia/hpc_sdk/Linux_x86_64/*/compilers/bin 2>/dev/null | sort -V | tail -1; }
+# "|| true": finding nothing is the normal case before the install, not an
+# error (under set -e + pipefail the failing ls would silently end the script).
+find_nvc_bin() { ls -d /opt/nvidia/hpc_sdk/Linux_x86_64/*/compilers/bin 2>/dev/null | sort -V | tail -1 || true; }
 nvc_bin="$(find_nvc_bin)"
 if [ -z "$nvc_bin" ] && ! command -v nvc >/dev/null; then
     apt-get update -qq
