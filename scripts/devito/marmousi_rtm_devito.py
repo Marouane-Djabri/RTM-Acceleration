@@ -345,8 +345,10 @@ def main():
         t_shot0 = walltime.time()
         shot_traces = np.array(traces[ishot], dtype=np.float32)   # (nrec, nt), copy off the memmap
         if a.mute_direct > 0.0:
+            # Same pad and taper as the C++ engine (src/main.cpp: 1/f0, 1/f0), so
+            # both codes migrate exactly the same muted data.
             mute_direct_wave(shot_traces, float(sx[ishot]), float(sz[ishot]),
-                              rx[ishot], rz[ishot], dt, a.mute_direct, 1.2 / a.f0, 1.2 / a.f0)
+                              rx[ishot], rz[ishot], dt, a.mute_direct, 1.0 / a.f0, 1.0 / a.f0)
 
         model["src"].coordinates.data[0, :] = [sx[ishot], sz[ishot]]
         rec_fwd.coordinates.data[:, 0] = rx[ishot]
