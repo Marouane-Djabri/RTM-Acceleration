@@ -102,12 +102,14 @@ def main():
 
         # 2. what actually differs: raw difference, in units of 1e-5 of the reference peak
         peak = float(np.abs(reference).max())
+        # One colour scale for all panels, set by the largest difference of any version.
+        scale = max(float(np.abs(img - reference).max()) for img in versions.values()) / peak * 1e5
         fig, axes = plt.subplots(len(versions), 1, figsize=(10, 2.4 * len(versions)), layout="constrained")
         axes = np.atleast_1d(axes)
         for ax, (name, image) in zip(axes, versions.items()):
             difference = (image - reference) / peak * 1e5
             im = show(ax, difference, f"{name} - reference   (max {np.abs(difference).max():.2f})",
-                      cmap="seismic", limit=2.0)
+                      cmap="seismic", limit=scale)
         fig.colorbar(im, ax=axes, label="difference, units of 1e-5 of the reference peak")
         fig.suptitle("Differences from the CPU reference (floating-point rounding)")
         save(fig, "version_differences.png")

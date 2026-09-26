@@ -60,8 +60,10 @@ DEVITO_LANGUAGE=openmp python3 scripts/devito/marmousi_rtm_devito.py \
     --order "$ORDER" --nb "$NB" --f0 "$F0" --store-interval "$STORE_INTERVAL" \
     --mute-direct "$MUTE_VELOCITY" --dataset "$DATASET_NAME" 2>&1 | grep -vE "^Operator|^\s*$" | tail -8
 deactivate
-[ -s results/images/devito.bin ] && compare results/images/devito.bin devito \
-    || echo "*** no Devito image"
+# Devito never passes the strict same-code gate (different boundaries, source
+# handling): the correlation it prints is a similarity measure, not a verdict.
+if [ -s results/images/devito.bin ]; then compare results/images/devito.bin devito || true
+else echo "*** no Devito image"; fi
 
 log_step "4/4 done"
 ls -la results/images/*.bin | awk '{print $5, $9}'
