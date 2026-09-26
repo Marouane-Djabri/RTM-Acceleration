@@ -10,6 +10,10 @@ Gold 6342 with 8 vCPUs, CUDA 12.8, Nsight Systems 2026.3.2. No Nsight Compute
 data: the host blocks GPU performance counters (`ERR_NVGPUCTRPERM`,
 `results/profiles/ncu_permission.txt`).
 
+**The images** come from a second, short session (`scripts/pod/images_run.sh`):
+RunPod, 1× RTX PRO 6000 Blackwell (MIG slice), CUDA 12.8. That session produced
+one migrated image per GPU version plus Devito's, and nothing else (no timings).
+
 ---
 
 ## 0. Before you start
@@ -47,13 +51,16 @@ myVenv/bin/python scripts/project_survey.py --survey-shots 1000 --dx 2.5
 | Tables ready for the report | `results/profiles/SUMMARY.md`, `results/profiles/step_breakdown.csv` |
 | Survey projections | `results/survey_projection_dx6.25.md`, `results/survey_projection_dx2.5.md` |
 | Charts | `results/plots/profiling/D*.png`, `results/plots/*_c73680b81fa3.png` |
+| **Migrated images, one per version + Devito** (raw float32, 1361 × 281) | `results/images/cuda-v0..v4.bin` (+ `_illum`, `_filtered`), `results/images/devito.bin` |
+| **Image figures for the report** | `results/plots/images/*.png` (regenerate: `myVenv/bin/python scripts/plot_version_images.py`) |
+| Image comparisons vs the reference (images session) | `results/compare_images.csv` |
 | **Timelines for the GUI** | `results/profiles/<dataset>/nsys/*.nsys-rep` |
 | Summary tables exported from each timeline | `results/profiles/<dataset>/nsys/*_cuda_*_sum.csv`, `*_nvtx_sum.csv` |
 | Per-run logs (if a number looks odd) | `results/profiles/<dataset>/runs/*.log` |
 
 `<dataset>` is `marmousi12` for the CUDA ladder (Part A) and `marmousi_dx<dx>`
-for the sweeps. Charts and CSVs are in git; the `.nsys-rep` reports (576 MB)
-live only on this laptop.
+for the sweeps. Charts, CSVs and the image figures are in git; the `.nsys-rep`
+reports (576 MB) and the raw `.bin` images live only on this laptop.
 
 **Rows to ignore in `scaling.csv`:** sweep `S1B_aliased` comes from the first
 capacity sweep, whose snapshot spacing (a fixed 10 ms) aliased the imaging at
@@ -62,10 +69,55 @@ keep valid throughput numbers; the charts use them only for throughput.
 
 ---
 
-## 2. The exploration, in seven sessions
+## 2. The exploration, in eight sessions
 
 Each session: open → look for → what it shows → report section. Do them in
 order: each one builds on the previous.
+
+### Session 0: The result images (15 min), start here
+
+**Open:** `results/plots/images/my_marmousi_filtered.png`, `versions_grid.png`,
+`version_differences.png`, then `devito_vs_ours.png`.
+
+**Look for:**
+* **The geology** (`my_marmousi_filtered.png`, the Laplacian-filtered image): layered
+  sediments on the left, the faulted blocks dipping through the centre (8–11 km),
+  the strong deep reflector at ~2.3 km, the structures on the right. That's the
+  known Marmousi model, so the migration works. `marmousi_ref.png` is the same
+  image before filtering. The big blobs near the surface are RTM's usual
+  low-frequency noise, which the filter removes: a good before/after pair.
+* **The 12 arcs along the top** are an acquisition footprint: only 12 shots were
+  fired, and each shot position leaves a curved artifact near the surface.
+* **Every version produces the same image** (`versions_grid.png`): the CPU
+  reference and cuda-v0 … v4 are indistinguishable, and each correlation with the
+  reference rounds to **1.0000000**.
+* **What differs is rounding** (`version_differences.png`, one colour scale for
+  all panels). The largest difference is **0.53 × 10⁻⁵ of the image's peak**
+  (cuda-v3), concentrated near the shallow shots.
+
+  | version | relative L2 vs reference, A40 | same, RTX PRO 6000 (Blackwell) |
+  |---|---|---|
+  | cuda-v0 | 4.3·10⁻⁶ | 4.3·10⁻⁶ |
+  | cuda-v1 | 4.2·10⁻⁶ | 7.3·10⁻⁶ |
+  | cuda-v2 | 4.6·10⁻⁶ | 7.5·10⁻⁶ |
+  | cuda-v3 | 8.5·10⁻⁶ | 1.45·10⁻⁵ |
+  | cuda-v4 | 6.7·10⁻⁶ | 1.06·10⁻⁵ |
+
+  On the Blackwell GPU, v3 and v4 land just above the strict 1·10⁻⁵ gate. Their
+  correlation is still exactly 1, and a real bug shows up around 10⁻³. The
+  compiler arranges the float operations slightly differently per GPU
+  architecture. What to write: *"all versions agree with the reference to within
+  floating-point rounding (relative L2 ≤ 1.5·10⁻⁵ on every GPU tested)."*
+* **Devito vs ours** (`devito_vs_ours.png`): the **same geology, correlation 0.95**
+  once both are filtered (0.69 raw: the two codes scale amplitudes differently).
+  Devito shows a **stronger flat event near 0.4 km** and more ringing in the
+  shallow layers. That's a difference between two independent implementations
+  (absorbing boundary, source interpolation), not an error in either. Both
+  migrate identical data: their direct-wave mutes were aligned before this run.
+
+**Report:** the first results figure (the filtered image), then "correctness
+across versions" (grid + differences + the table), and the Devito figure in the
+comparison chapter.
 
 ### Session 1: The headline numbers (15 min)
 
@@ -251,11 +303,11 @@ multi-GPU as future work).
   GPU memory. Ours is bounded by GPU memory, Devito's by host memory.
 * **Order sweep:** Devito slows at high orders (16.0 → 12.0 GPts/s from order 4
   to 16), while ours stays flat up to 12.
-* ⚠️ **Image similarity is lower than expected:** correlation ≈ 0.69–0.74 with our
-  image at 12.5–3.75 m (`compare_scaling.csv`). The two codes differ in absorbing
-  boundary, source injection and direct-wave mute, so some difference is normal,
-  but check it **visually** before writing about it (see §3). The 2.5 m numbers
-  (0.2–0.3) compare runs with different snapshot spacings, so ignore them.
+* **Image similarity:** raw correlation ≈ 0.69–0.74 with our image
+  (`compare_scaling.csv`), but **0.95 once both are filtered**, with the same
+  reflectors in the same places (Session 0, `devito_vs_ours.png`). The raw number
+  mostly measures different amplitude scaling. The 2.5 m numbers (0.2–0.3) compare
+  runs with different snapshot spacings, so ignore them.
 
 **Report:** a comparison chapter, and the discussion (hand-written vs generated
 code, where each one's time goes).
@@ -283,14 +335,10 @@ printed under the table in the report.
 
 ## 3. Open points to check before writing
 
-1. **Devito vs our image (Session 6):** plot both at 12.5 m and look at them side by side:
-   ```bash
-   myVenv/bin/python scripts/plot_image.py results/images/... --nx 1361 --nz 281 --dx 12.5 --dz 12.5
-   ```
-   The sweep images stayed on the pod (not synced). The fixed-dataset images for a
-   visual check can be regenerated in one short GPU session if needed. If the
-   reflectors sit in the same places, the correlation gap is amplitude/boundary
-   detail. If not, tell me.
+1. ✅ **Devito vs our image:** done (Session 0). The reflectors sit in the same
+   places (correlation 0.95 after filtering). The one visible difference is a
+   stronger flat event near 0.4 km in Devito's image. Describe it as an
+   implementation difference; don't claim either image is "wrong".
 2. **v1's extra 0.26 s outside the kernels (Session 1):** visible in the
    `cuda-v1` timeline as time before the first shot. Probably one-time memory
    allocation. It's harmless for the conclusions, but explain it if you report
@@ -308,8 +356,9 @@ printed under the table in the report.
 | Report chapter | Sessions | Main figures |
 |---|---|---|
 | Methodology | 1, 3, 5 (the aliasing lesson) | a timeline screenshot, tool walkthrough |
+| Results: the image and correctness | 0 | `my_marmousi_filtered.png` (+ raw), `versions_grid.png`, `version_differences.png` |
 | Results: per version | 1, 2, 3 | speedup chart, D2, v0 vs v1 timeline |
 | Results: scaling and capacity | 4, 5 | D8, D11b, D7, D7b |
-| Comparison with Devito | 6 | D8 (Devito line), Devito timeline |
+| Comparison with Devito | 0, 6 | `devito_vs_ours.png`, D8 (Devito line), Devito timeline |
 | Industrial perspective | 7 | D10 |
 | Discussion / future work | 2 (launch overhead → CUDA Graphs), 5 (checkpointing), 6, §3 | — |
