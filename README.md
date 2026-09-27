@@ -4,6 +4,24 @@ A transparent, dependency-free 2D acoustic Reverse Time Migration in C++17,
 built as a **correctness reference** for CPU/CUDA optimization research.
 Every numerical operation lives in plain, readable source files.
 
+## Results dashboard
+
+**Online:** [Marmousi RTM results](https://claude.ai/artifact/EXPpAYocEa2cRPLEZYrVio)
+(private link: open it while signed in to claude.ai, and share it from the page's
+Share menu before sending it to anyone).
+
+**Offline** (works without internet, e.g. during a presentation):
+
+```bash
+myVenv/bin/python scripts/build_dashboard.py   # writes results/dashboard.html
+```
+
+Then open `results/dashboard.html` in a browser. The page shows every result
+(image viewer, correctness, speed ladder, per-step profile, scaling, memory,
+Devito comparison, survey projection) next to its interpretation. The text is
+computed from the CSVs in `results/`, so re-run the script after a new run.
+The online copy doesn't update itself: it shows the results as of 2026-09-27.
+
 ## 1. What algorithm is implemented
 
 Standard **shot-profile acoustic Reverse Time Migration** with a zero-lag
