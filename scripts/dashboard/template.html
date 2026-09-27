@@ -1,0 +1,715 @@
+<title>Marmousi RTM Results</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Page template of scripts/build_dashboard.py. {{BODY}} and {{DATA}} are filled in by the script. */
+:root {
+  --bg: #eef1f0;
+  --surface: #fbfcfb;
+  --ink: #141a1c;
+  --ink-2: #465155;
+  --ink-3: #6b777b;
+  --rule: #d5dcdb;
+  --grid: #e3e8e7;
+  --accent: #0b6674;
+  --accent-soft: #d8eaec;
+  --header-bg: #10181b;
+  --header-ink: #cfe3e2;
+  --header-dim: #6f8b8d;
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --neutral: #a4acab;
+  --good: #0ca30c;
+  --good-ink: #0a6e0a;
+  --warn: #fab219;
+  --warn-ink: #8a5a00;
+  --bad: #d03b3b;
+  --bad-ink: #a42a2a;
+  --font-display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e1213;
+    --surface: #161b1d;
+    --ink: #e9eeee;
+    --ink-2: #b4bfc1;
+    --ink-3: #87949a;
+    --rule: #2a3336;
+    --grid: #232b2e;
+    --accent: #5cb8c5;
+    --accent-soft: #17312f;
+    --header-bg: #070a0b;
+    --header-ink: #cfe3e2;
+    --header-dim: #5f7a7c;
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --neutral: #697375;
+    --good-ink: #5fcf5f;
+    --warn-ink: #f4c04d;
+    --bad-ink: #ef7777;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1213;
+  --surface: #161b1d;
+  --ink: #e9eeee;
+  --ink-2: #b4bfc1;
+  --ink-3: #87949a;
+  --rule: #2a3336;
+  --grid: #232b2e;
+  --accent: #5cb8c5;
+  --accent-soft: #17312f;
+  --header-bg: #070a0b;
+  --header-ink: #cfe3e2;
+  --header-dim: #5f7a7c;
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --neutral: #697375;
+  --good-ink: #5fcf5f;
+  --warn-ink: #f4c04d;
+  --bad-ink: #ef7777;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.55 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 24px; }
+@media (max-width: 600px) { .wrap { padding-inline: 16px; } }
+.mono { font-family: var(--font-mono); font-size: 0.92em; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+p { margin: 0; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* masthead: the run parameters set like a SEG-Y textual header */
+.masthead { background: var(--header-bg); color: var(--header-ink); padding-block: 40px 32px; }
+.masthead .kicker { color: var(--header-dim); }
+.masthead h1 {
+  font-size: clamp(30px, 5vw, 52px);
+  font-weight: 800;
+  font-stretch: 78%;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  margin-block: 8px 24px;
+  color: #f4fbfa;
+}
+.textual-header {
+  margin: 0;
+  font: 13px/1.7 var(--font-mono);
+  color: var(--header-ink);
+  white-space: pre;
+  overflow-x: auto;
+  border-top: 1px solid #243236;
+  padding-top: 14px;
+}
+.kicker {
+  font: 600 12px/1.2 var(--font-body);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.sections-nav {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 5;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+}
+.nav-inner { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.nav-inner a {
+  flex: none;
+  padding: 12px 12px;
+  color: var(--ink-2);
+  text-decoration: none;
+  font: 500 14px/1 var(--font-body);
+  border-bottom: 2px solid transparent;
+}
+.nav-inner a:hover { color: var(--ink); }
+.nav-inner a.current { color: var(--ink); border-bottom-color: var(--accent); }
+
+main { display: grid; gap: 0; }
+.section { padding-block: 48px; border-bottom: 1px solid var(--rule); scroll-margin-top: 48px; }
+.section-head { display: grid; gap: 8px; max-width: 72ch; margin-bottom: 24px; }
+.section-head h2 { font-size: clamp(24px, 3vw, 32px); font-weight: 700; font-stretch: 85%; line-height: 1.1; }
+.lede { color: var(--ink-2); }
+.section-body { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+@media (max-width: 900px) { .section-body { grid-template-columns: minmax(0, 1fr); } }
+.figure { display: grid; gap: 12px; min-width: 0; }
+.reading { display: grid; gap: 12px; align-content: start; }
+.reading h3 { font-size: 13px; font-weight: 600; font-family: var(--font-body); letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3); }
+.reading ul { margin: 0; padding-left: 18px; display: grid; gap: 10px; }
+.reading li { max-width: 62ch; }
+.reading li::marker { color: var(--accent); }
+.report { font-size: 14px; color: var(--ink-2); border-top: 1px solid var(--rule); padding-top: 12px; }
+.report span { display: block; font-weight: 600; font-size: 12px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 2px; }
+.note { color: var(--ink-3); font-size: 13px; }
+.notes { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+
+/* summary */
+.overview { padding-block: 40px; }
+.overview-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+@media (max-width: 900px) { .overview-grid { grid-template-columns: minmax(0, 1fr); } }
+.overview h2 { font-size: clamp(24px, 3vw, 32px); font-weight: 700; font-stretch: 85%; margin-block: 8px 16px; }
+.overview ul { margin: 0; padding-left: 18px; display: grid; gap: 12px; max-width: 68ch; }
+.overview li::marker { color: var(--accent); }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.tile { background: var(--surface); padding: 18px 18px 16px; display: grid; gap: 2px; align-content: start; }
+.tile-value { font: 700 clamp(28px, 3.4vw, 40px)/1.05 var(--font-display); font-stretch: 80%; font-variant-numeric: tabular-nums; color: var(--ink); }
+.tile-label { font-weight: 600; margin-top: 6px; }
+.tile-note { color: var(--ink-3); font-size: 13px; }
+
+/* small stat row above the ladder chart */
+.mini-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.mini { display: grid; gap: 2px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--rule); }
+.mini strong { font: 700 24px/1.1 var(--font-display); font-stretch: 85%; font-variant-numeric: tabular-nums; }
+.mini span:last-child { color: var(--ink-3); font-size: 13px; }
+.mini.accent { border-color: var(--accent); background: var(--accent-soft); }
+
+/* charts */
+.chart-title { font-weight: 600; font-size: 14px; }
+.chart { width: 100%; min-height: 120px; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: var(--font-body); font-size: 12px; fill: var(--ink-2); font-variant-numeric: tabular-nums; }
+.chart .axis-label { fill: var(--ink-3); }
+.chart .value-label { fill: var(--ink); font-weight: 500; }
+.chart .grid-line { stroke: var(--grid); stroke-width: 1; }
+.chart .baseline { stroke: var(--ink-3); stroke-width: 1; }
+.chart .band { fill: var(--ink); opacity: 0; }
+.chart .band:hover { opacity: 0.05; }
+.chart [data-tip] { cursor: default; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 14px; height: 10px; border-radius: 2px; }
+.legend i.line { height: 0; border-top: 2px solid; border-radius: 0; }
+.legend i.dash { height: 0; border-top: 2px dashed; border-radius: 0; background: none; }
+#tip {
+  position: fixed; z-index: 20; pointer-events: none;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--rule); box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  padding: 8px 10px; font-size: 13px; line-height: 1.45; max-width: 280px;
+  font-variant-numeric: tabular-nums;
+}
+#tip b { font-weight: 600; }
+#tip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+
+/* tables */
+.table-wrap { overflow-x: auto; border: 1px solid var(--rule); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-weight: 600; font-size: 12px; color: var(--ink-3); letter-spacing: 0.04em; background: var(--bg); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+details.numbers summary { cursor: pointer; color: var(--accent); font-weight: 500; font-size: 14px; padding-block: 4px; }
+details.numbers[open] summary { margin-bottom: 8px; }
+details.numbers .note { margin-top: 8px; }
+
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; border: 1px solid; }
+.chip-good { color: var(--good-ink); border-color: var(--good); }
+.chip-warn { color: var(--warn-ink); border-color: var(--warn); }
+.chip-bad { color: var(--bad-ink); border-color: var(--bad); }
+
+/* image viewer */
+.viewer { display: grid; gap: 12px; }
+.viewer-controls { display: grid; gap: 10px; }
+.viewer-row { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; }
+.segmented { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--rule); background: var(--surface); width: fit-content; max-width: 100%; }
+.segmented button {
+  font: 500 13px/1 var(--font-body); color: var(--ink-2); background: none;
+  border: 0; border-right: 1px solid var(--rule); padding: 9px 12px; cursor: pointer;
+}
+.segmented button:last-child { border-right: 0; }
+.segmented button:hover { color: var(--ink); background: var(--bg); }
+.segmented button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.segmented button:disabled { opacity: 0.4; cursor: not-allowed; }
+.clip { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.clip input { width: 140px; accent-color: var(--accent); }
+.clip output { font-family: var(--font-mono); font-size: 12px; min-width: 3.5ch; }
+.canvas-wrap { position: relative; background: #000; }
+#image-canvas { display: block; width: 100%; height: auto; aspect-ratio: 1361 / 281; image-rendering: auto; cursor: crosshair; max-width: 100%; }
+.axis-x { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3); background: var(--bg); padding-top: 4px; }
+.viewer-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 20px; }
+.caption { color: var(--ink-2); font-size: 14px; max-width: 70ch; }
+.readout { color: var(--ink-3); font-size: 12px; }
+.colorbar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); }
+.colorbar .bar { flex: 0 1 220px; height: 10px; border: 1px solid var(--rule); }
+
+.footer { padding-block: 32px 48px; color: var(--ink-3); font-size: 13px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+</style>
+
+{{BODY}}
+
+<div id="tip" hidden></div>
+<script type="application/json" id="dashboard-data">{{DATA}}</script>
+<script>
+(function () {
+  "use strict";
+  const DATA = JSON.parse(document.getElementById("dashboard-data").textContent);
+  const SVG_NS = "http://www.w3.org/2000/svg";
+
+  // ------------------------------------------------------------ small helpers
+  function svgElement(tag, attributes, parent) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [key, value] of Object.entries(attributes || {})) {
+      if (key === "text") node.textContent = value;
+      else node.setAttribute(key, value);
+    }
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+  function linearScale(d0, d1, r0, r1) { return v => r0 + (v - d0) / (d1 - d0) * (r1 - r0); }
+  function logScale(d0, d1, r0, r1) {
+    const l0 = Math.log10(d0), l1 = Math.log10(d1);
+    return v => r0 + (Math.log10(v) - l0) / (l1 - l0) * (r1 - r0);
+  }
+  function niceTicks(maximum, count) {
+    const rough = maximum / count;
+    const power = Math.pow(10, Math.floor(Math.log10(rough)));
+    const step = [1, 2, 2.5, 5, 10].map(m => m * power).find(s => s >= rough);
+    const ticks = [];
+    for (let v = 0; ; v += step) {
+      ticks.push(+v.toFixed(10));
+      if (v >= maximum - step * 1e-6) break;
+    }
+    return ticks;
+  }
+  function format(value, digits) {
+    return value == null ? "—" : value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+  function newChart(container, margin) {
+    const width = Math.max(280, container.clientWidth);
+    const height = +container.dataset.height || 260;
+    const svg = svgElement("svg", { viewBox: `0 0 ${width} ${height}`, role: "img" }, container);
+    return { svg, width, height, left: margin.left, right: width - margin.right, top: margin.top, bottom: height - margin.bottom };
+  }
+  function legend(id, items) {
+    const box = document.getElementById(id);
+    if (!box) return;
+    box.innerHTML = items.map(item =>
+      `<span><i class="${item.kind || ""}" style="${item.kind ? "border-color" : "background"}:${item.color}"></i>${item.label}</span>`
+    ).join("");
+  }
+  function swatch(color) { return `<span class="sw" style="background:${color}"></span>`; }
+
+  // Tooltip: every mark carries its own HTML in data-tip.
+  const tip = document.getElementById("tip");
+  function placeTip(event) {
+    const pad = 14;
+    let x = event.clientX + pad, y = event.clientY + pad;
+    const box = tip.getBoundingClientRect();
+    if (x + box.width > window.innerWidth - 8) x = event.clientX - box.width - pad;
+    if (y + box.height > window.innerHeight - 8) y = event.clientY - box.height - pad;
+    tip.style.left = Math.max(8, x) + "px";
+    tip.style.top = Math.max(8, y) + "px";
+  }
+  document.addEventListener("pointermove", event => {
+    const target = event.target.closest ? event.target.closest("[data-tip]") : null;
+    if (!target) { tip.hidden = true; return; }
+    tip.innerHTML = target.getAttribute("data-tip");
+    tip.hidden = false;
+    placeTip(event);
+  });
+  document.addEventListener("scroll", () => { tip.hidden = true; }, { passive: true });
+
+  // ------------------------------------------------------------ charts
+  const drawers = [];
+  function register(id, draw) {
+    const container = document.getElementById(id);
+    if (!container) return;
+    const redraw = () => { container.innerHTML = ""; draw(container); };
+    drawers.push({ container, redraw, width: 0 });
+  }
+
+  // Horizontal bars: GPU forward + backward time per version.
+  register("chart-ladder", container => {
+    const rows = DATA.ladder;
+    const c = newChart(container, { left: 72, right: 150, top: 8, bottom: 28 });
+    const maximum = Math.max(...rows.map(r => r.t_fb));
+    const ticks = niceTicks(maximum, 5);
+    const x = linearScale(0, ticks[ticks.length - 1], c.left, c.right);
+    const rowHeight = (c.bottom - c.top) / rows.length;
+    ticks.forEach(t => {
+      svgElement("line", { x1: x(t), x2: x(t), y1: c.top, y2: c.bottom, class: "grid-line" }, c.svg);
+      svgElement("text", { x: x(t), y: c.bottom + 18, "text-anchor": "middle", class: "axis-label", text: format(t, t < 1 ? 1 : 1) + " s" }, c.svg);
+    });
+    rows.forEach((r, i) => {
+      const y = c.top + i * rowHeight + rowHeight / 2;
+      const barHeight = Math.min(22, rowHeight * 0.6);
+      svgElement("text", { x: c.left - 10, y: y + 4, "text-anchor": "end", text: r.engine, style: "font-family:var(--font-mono)" }, c.svg);
+      const tipHtml = `<b>${r.engine}</b><br>${r.what}<br>forward + backward ${format(r.t_fb, 2)} s<br>total ${format(r.t_total, 2)} s<br>${format(r.gpts, 1)} GPts/s<br>${format(r.vs_cpu_opt, 0)}× vs cpu-opt · ${format(r.vs_cpu, 0)}× vs cpu`;
+      svgElement("rect", { x: c.left, y: y - barHeight / 2, width: Math.max(1, x(r.t_fb) - c.left), height: barHeight, rx: 3, style: "fill:var(--s1)", "data-tip": tipHtml }, c.svg);
+      const label = svgElement("text", { x: x(r.t_fb) + 8, y: y + 4, class: "value-label", text: `${format(r.t_fb, 2)} s ` }, c.svg);
+      svgElement("tspan", { class: "axis-label", text: `· ${format(r.vs_cpu_opt, 0)}× vs cpu-opt` }, label);
+    });
+    svgElement("line", { x1: c.left, x2: c.left, y1: c.top, y2: c.bottom, class: "baseline" }, c.svg);
+  });
+
+  // Stacked bars: GPU time per time step, with the CPU launch time marked.
+  const STEP_PARTS = [
+    { key: "stencil", label: "stencil", color: "var(--s1)" },
+    { key: "sponge", label: "sponge (separate pass)", color: "var(--s2)" },
+    { key: "imaging", label: "imaging", color: "var(--s3)" },
+    { key: "other", label: "injection, recording, copies", color: "var(--neutral)" },
+  ];
+  legend("legend-steps", STEP_PARTS.map(p => ({ label: p.label, color: p.color }))
+    .concat([{ label: "CPU time in cudaLaunchKernel", color: "var(--ink)", kind: "dash" }]));
+  register("chart-steps", container => {
+    const rows = DATA.steps;
+    const c = newChart(container, { left: 72, right: 56, top: 8, bottom: 28 });
+    const maximum = Math.max(...rows.map(r => Math.max(r.gpu_total, r.launch)));
+    const ticks = niceTicks(maximum, 5);
+    const x = linearScale(0, ticks[ticks.length - 1], c.left, c.right);
+    const rowHeight = (c.bottom - c.top) / rows.length;
+    ticks.forEach(t => {
+      svgElement("line", { x1: x(t), x2: x(t), y1: c.top, y2: c.bottom, class: "grid-line" }, c.svg);
+      svgElement("text", { x: x(t), y: c.bottom + 18, "text-anchor": "middle", class: "axis-label", text: `${t} µs` }, c.svg);
+    });
+    rows.forEach((r, i) => {
+      const y = c.top + i * rowHeight + rowHeight / 2;
+      const barHeight = Math.min(24, rowHeight * 0.6);
+      svgElement("text", { x: c.left - 10, y: y + 4, "text-anchor": "end", text: r.engine, style: "font-family:var(--font-mono)" }, c.svg);
+      let start = 0;
+      const parts = STEP_PARTS.filter(p => r[p.key] > 0);
+      parts.forEach((p, k) => {
+        const value = r[p.key];
+        const gap = k < parts.length - 1 ? 2 : 0;
+        const label = p.key === "imaging" && r.imaging_fused ? "imaging (fused into the backward stencil)" : p.label;
+        svgElement("rect", {
+          x: x(start), y: y - barHeight / 2, width: Math.max(1, x(start + value) - x(start) - gap), height: barHeight,
+          rx: k === parts.length - 1 ? 3 : 0, style: `fill:${p.color}`,
+          "data-tip": `<b>${r.engine}</b><br>${swatch(p.color)}${label}: ${format(value, 1)} µs/step<br>GPU total ${format(r.gpu_total, 1)} µs · ${format(r.kernels, 2)} kernels/step`,
+        }, c.svg);
+        start += value;
+      });
+      svgElement("text", { x: x(Math.max(r.gpu_total, r.launch)) + 8, y: y + 4, class: "value-label", text: format(r.gpu_total, 1) }, c.svg);
+      svgElement("line", {
+        x1: x(r.launch), x2: x(r.launch), y1: y - barHeight / 2 - 5, y2: y + barHeight / 2 + 5,
+        style: "stroke:var(--ink);stroke-width:2;stroke-dasharray:3 2",
+        "data-tip": `<b>${r.engine}</b><br>CPU spends ${format(r.launch, 1)} µs/step launching kernels<br>GPU busy ${format(r.busy, 1)}%`,
+      }, c.svg);
+    });
+    svgElement("line", { x1: c.left, x2: c.left, y1: c.top, y2: c.bottom, class: "baseline" }, c.svg);
+  });
+
+  // Lines on a shared log-x axis: generic helper used by the scaling chart.
+  function lineChart(container, options) {
+    const c = newChart(container, options.margin || { left: 48, right: 116, top: 16, bottom: 44 });
+    const xs = options.xValues;
+    const x = options.xLog
+      ? logScale(Math.min(...xs) / 1.35, Math.max(...xs) * 1.35, c.left, c.right)
+      : linearScale(Math.min(...xs) - options.xPad, Math.max(...xs) + options.xPad, c.left, c.right);
+    const yTicks = options.yTicks;
+    const y = options.yLog
+      ? logScale(yTicks[0], yTicks[yTicks.length - 1], c.bottom, c.top)
+      : linearScale(yTicks[0], yTicks[yTicks.length - 1], c.bottom, c.top);
+    yTicks.forEach(t => {
+      svgElement("line", { x1: c.left, x2: c.right, y1: y(t), y2: y(t), class: "grid-line" }, c.svg);
+      svgElement("text", { x: c.left - 8, y: y(t) + 4, "text-anchor": "end", class: "axis-label", text: options.yFormat(t) }, c.svg);
+    });
+    svgElement("line", { x1: c.left, x2: c.right, y1: c.bottom, y2: c.bottom, class: "baseline" }, c.svg);
+    xs.forEach((v, i) => {
+      const lines = options.xLabel(v, i);
+      lines.forEach((line, k) => svgElement("text", { x: x(v), y: c.bottom + 16 + k * 14, "text-anchor": "middle", class: k ? "axis-label" : "", text: line }, c.svg));
+    });
+    if (options.before) options.before(c, x, y);
+    options.series.forEach(s => {
+      const points = s.points.filter(p => p[1] != null);
+      if (!points.length) return;
+      svgElement("path", {
+        d: points.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join(""),
+        style: `fill:none;stroke:${s.color};stroke-width:2;${s.dash ? "stroke-dasharray:5 4;" : ""}`,
+      }, c.svg);
+      points.forEach(p => svgElement("circle", {
+        cx: x(p[0]), cy: y(p[1]), r: s.hollow ? 4 : 4,
+        style: s.hollow ? `fill:var(--surface);stroke:${s.color};stroke-width:2` : `fill:${s.color};stroke:var(--surface);stroke-width:2`,
+      }, c.svg));
+      if (s.endLabel) {
+        const last = points[points.length - 1];
+        svgElement("text", { x: x(last[0]) + 10, y: y(last[1]) + 4 + (s.labelShift || 0), class: "value-label", text: s.endLabel }, c.svg);
+      }
+    });
+    // hover bands, one per x value
+    xs.forEach((v, i) => {
+      const left = i === 0 ? c.left : (x(xs[i - 1]) + x(v)) / 2;
+      const right = i === xs.length - 1 ? c.right : (x(v) + x(xs[i + 1])) / 2;
+      svgElement("rect", { x: left, y: c.top, width: Math.max(1, right - left), height: c.bottom - c.top, class: "band", "data-tip": options.tip(v, i) }, c.svg);
+    });
+    return c;
+  }
+
+  const S1 = "var(--s1)", S2 = "var(--s2)";
+  legend("legend-scaling", [
+    { label: "ours, cuda-v1", color: S1, kind: "line" },
+    { label: "Devito, end to end", color: S2, kind: "line" },
+    { label: "Devito, compute only (its profiler)", color: S2, kind: "dash" },
+    { label: "memory-bandwidth ceiling", color: "var(--ink-3)", kind: "dash" },
+  ]);
+  register("chart-scaling", container => {
+    const rows = DATA.scaling.filter(r => r.ours_v1 != null || r.devito_wall != null);
+    const xs = rows.map(r => r.points);
+    const top = Math.ceil(Math.max(DATA.ceiling, ...rows.map(r => Math.max(r.ours_v1 || 0, r.devito_compute || 0))) / 5) * 5;
+    lineChart(container, {
+      xValues: xs, xLog: true,
+      yTicks: niceTicks(top, 5), yFormat: t => t,
+      xLabel: (v, i) => [`${rows[i].dx} m`, `${(v / 1e6).toFixed(v < 1e6 ? 2 : 1)} M`],
+      series: [
+        { points: rows.map(r => [r.points, r.ours_v1]), color: S1, endLabel: "ours" },
+        { points: rows.map(r => [r.points, r.devito_compute]), color: S2, dash: true, hollow: true, endLabel: "Devito compute", labelShift: -8 },
+        { points: rows.map(r => [r.points, r.devito_wall]), color: S2, endLabel: "Devito end to end" },
+      ],
+      before: (c, x, y) => {
+        svgElement("line", { x1: c.left, x2: c.right, y1: y(DATA.ceiling), y2: y(DATA.ceiling), style: "stroke:var(--ink-3);stroke-width:1.5;stroke-dasharray:6 4" }, c.svg);
+        svgElement("text", { x: c.left + 6, y: y(DATA.ceiling) - 6, class: "axis-label", text: `ceiling ${DATA.ceiling.toFixed(1)} GPts/s = ${Math.round(DATA.bandwidth)} GB/s ÷ 24 B per point` }, c.svg);
+      },
+      tip: (v, i) => {
+        const r = rows[i];
+        return `<b>dx ${r.dx} m</b> · ${(r.points / 1e6).toFixed(2)} M points<br>` +
+          `${swatch(S1)}ours v1 ${format(r.ours_v1, 1)} · v3 ${format(r.ours_v3, 1)} GPts/s<br>` +
+          `${swatch(S2)}Devito ${format(r.devito_wall, 1)} end to end, ${format(r.devito_compute, 1)} compute` +
+          (r.devito_every && r.devito_every !== 10 ? `<br>(Devito snapshot every ${r.devito_every} steps)` : "");
+      },
+    });
+  });
+
+  legend("legend-orders", [
+    { label: "ours, cuda-v1", color: S1, kind: "line" },
+    { label: "Devito, end to end", color: S2, kind: "line" },
+  ]);
+  register("chart-orders", container => {
+    const ours = DATA.orders.ours, devito = DATA.orders.devito;
+    const xs = [...new Set(ours.concat(devito).map(p => p[0]))].sort((a, b) => a - b);
+    const top = Math.ceil(Math.max(...ours.concat(devito).map(p => p[1])) / 5) * 5 + 5;
+    lineChart(container, {
+      xValues: xs, xPad: 2, margin: { left: 48, right: 90, top: 16, bottom: 32 },
+      yTicks: niceTicks(top, 5), yFormat: t => t,
+      xLabel: v => [`order ${v}`],
+      series: [
+        { points: ours, color: S1, endLabel: "ours" },
+        { points: devito, color: S2, endLabel: "Devito" },
+      ],
+      tip: v => {
+        const a = ours.find(p => p[0] === v), b = devito.find(p => p[0] === v);
+        return `<b>order ${v}</b><br>${swatch(S1)}ours ${a ? format(a[1], 1) : "not run"}<br>${swatch(S2)}Devito ${b ? format(b[1], 1) : "not run"} GPts/s`;
+      },
+    });
+  });
+
+  legend("legend-capacity", [
+    { label: "measured peak", color: S1 },
+    { label: "estimated need (ran out of memory)", color: "var(--bad)" },
+    { label: "GPU memory", color: "var(--bad)", kind: "dash" },
+  ]);
+  register("chart-capacity", container => {
+    const rows = DATA.capacity;
+    const xs = rows.map((r, i) => i);
+    const low = Math.min(...rows.map(r => Math.min(r.need_gib, r.measured_gib || Infinity)));
+    const high = Math.max(...rows.map(r => r.need_gib));
+    const all = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+    const ticks = all.filter((t, i) => all[i + 1] > low && (i === 0 || all[i - 1] < high));
+    lineChart(container, {
+      xValues: xs, xPad: 0.5, margin: { left: 48, right: 24, top: 16, bottom: 44 },
+      yTicks: ticks, yLog: true, yFormat: t => t,
+      xLabel: (v, i) => [`${rows[i].dx} m`, `${(rows[i].points / 1e6).toFixed(rows[i].points < 1e6 ? 2 : 1)} M pts`],
+      series: [],
+      before: (c, x, y) => {
+        if (DATA.limit_gib) {
+          svgElement("line", { x1: c.left, x2: c.right, y1: y(DATA.limit_gib), y2: y(DATA.limit_gib), style: "stroke:var(--bad);stroke-width:1.5;stroke-dasharray:6 4" }, c.svg);
+          svgElement("text", { x: c.left + 6, y: y(DATA.limit_gib) - 6, class: "axis-label", text: `${DATA.limit_gib.toFixed(0)} GiB on the GPU` }, c.svg);
+        }
+        svgElement("path", { d: rows.map((r, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(r.need_gib).toFixed(1)}`).join(""), style: "fill:none;stroke:var(--ink-3);stroke-width:1;stroke-dasharray:2 3" }, c.svg);
+        rows.forEach((r, i) => {
+          const ok = r.status === "ok";
+          const value = ok ? r.measured_gib : r.need_gib;
+          svgElement("circle", { cx: x(i), cy: y(value), r: 6, style: ok ? `fill:${S1};stroke:var(--surface);stroke-width:2` : "fill:var(--surface);stroke:var(--bad);stroke-width:2" }, c.svg);
+          if (!ok) {
+            svgElement("path", { d: `M${x(i) - 3},${y(value) - 3}L${x(i) + 3},${y(value) + 3}M${x(i) + 3},${y(value) - 3}L${x(i) - 3},${y(value) + 3}`, style: "stroke:var(--bad);stroke-width:1.5" }, c.svg);
+          }
+          svgElement("text", { x: x(i), y: y(value) - 12, "text-anchor": "middle", class: "value-label", text: value >= 10 ? value.toFixed(0) : value.toFixed(1) }, c.svg);
+        });
+      },
+      tip: (v, i) => {
+        const r = rows[i];
+        return `<b>dx ${r.dx} m</b> · snapshot every ${r.every} steps<br>` +
+          (r.status === "ok" ? `measured ${format(r.measured_gib, 1)} GiB` : `<b>out of memory</b>, needs about ${format(r.need_gib, 0)} GiB`) +
+          `<br>estimate ${format(r.need_gib, 1)} GiB` +
+          (r.densest_that_fits ? `<br>densest spacing that fits: every ${r.densest_that_fits} steps` : "");
+      },
+    });
+  });
+
+  register("chart-snapshots", container => {
+    const points = DATA.snapshots;
+    if (!points.length) return;
+    const xs = points.map((p, i) => i);
+    lineChart(container, {
+      xValues: xs, xPad: 0.4, margin: { left: 48, right: 24, top: 22, bottom: 30 },
+      yTicks: [0, 0.25, 0.5, 0.75, 1], yFormat: t => t.toFixed(2),
+      xLabel: (v, i) => [`every ${points[i][0]}`],
+      series: [{ points: points.map((p, i) => [i, p[1]]), color: S1 }],
+      before: (c, x, y) => {
+        points.forEach((p, i) => svgElement("text", { x: x(i), y: y(p[1]) - 10, "text-anchor": "middle", class: "value-label", text: i === 0 ? "1 (baseline)" : p[1] > 0.999 ? p[1].toFixed(7) : p[1].toFixed(2) }, c.svg));
+      },
+      tip: (v, i) => `<b>snapshot every ${points[i][0]} steps</b><br>correlation with the ${points[0][0]}-step image: ${points[i][1].toFixed(7)}`,
+    });
+  });
+
+  function drawAll(force) {
+    drawers.forEach(d => {
+      const width = d.container.clientWidth;
+      if (force || Math.abs(width - d.width) > 2) { d.width = width; d.redraw(); }
+    });
+  }
+  drawAll(true);
+  let resizeTimer = null;
+  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => drawAll(false), 120); });
+
+  // ------------------------------------------------------------ section nav highlight
+  const navLinks = [...document.querySelectorAll(".nav-inner a")];
+  if ("IntersectionObserver" in window && navLinks.length) {
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        navLinks.forEach(a => a.classList.toggle("current", a.getAttribute("href") === "#" + entry.target.id));
+      });
+    }, { rootMargin: "-45% 0px -50% 0px" });
+    document.querySelectorAll("main .section").forEach(s => observer.observe(s));
+  }
+
+  // ------------------------------------------------------------ image viewer
+  const IMG = DATA.images;
+  if (!IMG || !document.getElementById("image-viewer")) return;
+  const canvas = document.getElementById("image-canvas");
+  canvas.width = IMG.nx;
+  canvas.height = IMG.nz;
+  const context = canvas.getContext("2d");
+  const pixels = context.createImageData(IMG.nx, IMG.nz);
+  const decoded = new Map();
+  const state = { id: "reference", mode: "image", clip: 0.6 };
+  document.getElementById("image-xmax").textContent = IMG.x_km.toFixed(1);
+
+  async function decode(base64) {
+    if (decoded.has(base64)) return decoded.get(base64);
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    const values = new Int8Array(await new Response(stream).arrayBuffer());
+    decoded.set(base64, values);
+    return values;
+  }
+
+  // Grey for the image (black = negative, white = positive); blue - grey - red for differences.
+  const DIVERGING = { negative: [42, 120, 214], middle: [240, 239, 236], positive: [227, 73, 72] };
+  function mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+  const diffColors = [];
+  for (let q = -127; q <= 127; q++) {
+    const t = q / 127;
+    diffColors.push(t < 0 ? mix(DIVERGING.middle, DIVERGING.negative, -t) : mix(DIVERGING.middle, DIVERGING.positive, t));
+  }
+
+  let current = null;   // { values, mode }
+  let renderToken = 0;
+  async function render() {
+    const token = ++renderToken;
+    const entry = IMG.entries.find(e => e.id === state.id);
+    const showDiff = state.mode === "diff" && entry.diff;
+    const values = await decode(showDiff ? entry.diff : entry.data);
+    if (token !== renderToken) return;
+    const out = pixels.data;
+    const nx = IMG.nx, nz = IMG.nz;
+    const perUnit = IMG.quant;
+    for (let i = 0; i < nx * nz; i++) {
+      const q = values[i];
+      let r, g, b;
+      if (showDiff) {
+        [r, g, b] = diffColors[q + 127];
+      } else {
+        const t = Math.max(-1, Math.min(1, q / perUnit / state.clip));
+        r = g = b = (t + 1) * 127.5;
+      }
+      out[4 * i] = r; out[4 * i + 1] = g; out[4 * i + 2] = b; out[4 * i + 3] = 255;
+    }
+    context.putImageData(pixels, 0, 0);
+    current = { values, showDiff, entry };
+    updateText();
+  }
+
+  function updateText() {
+    const entry = IMG.entries.find(e => e.id === state.id);
+    const showDiff = state.mode === "diff" && entry.diff;
+    let caption = entry.note;
+    if (entry.corr != null) caption += ` Correlation with the reference: ${entry.corr.toFixed(7)}.`;
+    if (entry.corr_devito) caption += ` Correlation with cuda-v1: ${entry.corr_devito.filtered.toFixed(2)} filtered, ${entry.corr_devito.raw.toFixed(2)} raw.`;
+    if (showDiff) caption = `${entry.id} minus the reference, raw images, in units of 10⁻⁵ of the reference's peak. Largest difference ${entry.diff_max.toFixed(2)}. All versions share one colour scale.`;
+    document.getElementById("image-caption").textContent = caption;
+    const bar = document.getElementById("image-colorbar");
+    if (showDiff) {
+      const s = IMG.diff_scale.toFixed(2);
+      bar.innerHTML = `<span>−${s}</span><span class="bar" style="background:linear-gradient(90deg,rgb(${DIVERGING.negative}),rgb(${DIVERGING.middle}),rgb(${DIVERGING.positive}))"></span><span>+${s} × 10⁻⁵ of peak</span>`;
+    } else {
+      bar.innerHTML = `<span>−${state.clip.toFixed(2)}</span><span class="bar" style="background:linear-gradient(90deg,#000,#fff)"></span><span>+${state.clip.toFixed(2)} × 99th percentile</span>`;
+    }
+    document.querySelectorAll("#image-mode button").forEach(b => {
+      b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode));
+      if (b.dataset.mode === "diff") b.disabled = !entry.diff;
+    });
+    document.getElementById("image-clip").disabled = !!showDiff;
+    document.querySelectorAll("#image-choices button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.id === state.id)));
+  }
+
+  const choices = document.getElementById("image-choices");
+  IMG.entries.forEach(entry => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.id = entry.id;
+    button.textContent = entry.label;
+    button.addEventListener("click", () => {
+      state.id = entry.id;
+      if (!entry.diff) state.mode = "image";
+      render();
+    });
+    choices.appendChild(button);
+  });
+  document.querySelectorAll("#image-mode button").forEach(b => b.addEventListener("click", () => { state.mode = b.dataset.mode; render(); }));
+  const clip = document.getElementById("image-clip");
+  clip.addEventListener("input", () => {
+    state.clip = +clip.value;
+    document.getElementById("image-clip-value").textContent = state.clip.toFixed(2);
+    render();
+  });
+
+  canvas.addEventListener("pointermove", event => {
+    if (!current) return;
+    const box = canvas.getBoundingClientRect();
+    const ix = Math.min(IMG.nx - 1, Math.max(0, Math.floor((event.clientX - box.left) / box.width * IMG.nx)));
+    const iz = Math.min(IMG.nz - 1, Math.max(0, Math.floor((event.clientY - box.top) / box.height * IMG.nz)));
+    const q = current.values[iz * IMG.nx + ix];
+    const value = current.showDiff ? `${(q / 127 * IMG.diff_scale).toFixed(2)} × 10⁻⁵ of peak` : `${(q / IMG.quant).toFixed(2)} × p99`;
+    document.getElementById("image-readout").textContent =
+      `x ${(ix / (IMG.nx - 1) * IMG.x_km).toFixed(2)} km · depth ${(iz / (IMG.nz - 1) * IMG.z_km).toFixed(2)} km · ${value}`;
+  });
+
+  if (typeof DecompressionStream === "undefined") {
+    document.getElementById("image-caption").textContent = "This browser can't decompress the embedded images. Open the page in a recent Chrome, Edge, Firefox or Safari.";
+  } else {
+    render();
+  }
+})();
+</script>

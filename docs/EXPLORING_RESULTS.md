@@ -37,6 +37,11 @@ myVenv/bin/python scripts/profile_extract.py
 myVenv/bin/python scripts/project_survey.py --survey-shots 1000 --dx 2.5
 ```
 
+**See everything in one page:** `myVenv/bin/python scripts/build_dashboard.py`
+writes `results/dashboard.html`, which has every chart, table and image from the
+sessions below, with the interpretation computed from the same CSVs. Open it in a
+browser; it works offline.
+
 ---
 
 ## 1. Map of the results
