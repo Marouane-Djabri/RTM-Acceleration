@@ -1,0 +1,10 @@
+# LaTeX build files (rebuild with: latexmk -pdf paper.tex)
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.swp
